@@ -1,31 +1,34 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de PDF - Inserir Imagem</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de PDF - Adicionar Campo</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
 </head>
 <body>
-    <div class="controls">
-        <h2>Inserir Imagem no PDF</h2>
-        <div class="button-group">
-            <input type="file" id="uploadPdf" accept="application/pdf" hidden>
-            <label for="uploadPdf" class="btn">1. Selecionar PDF</label>
-            
-            <input type="file" id="imageInput" accept="image/png, image/jpeg" hidden>
-            
-            <button id="downloadBtn" class="btn btn-success" disabled>2. Baixar PDF Final</button>
-        </div>
-        <p id="status">Aguardando arquivo...</p>
-    </div>
 
-    <div class="canvas-container" id="container">
-        <canvas id="pdfCanvas"></canvas>
-    </div>
+    <div class="controls">
+        <h2>Adicionar Campo d Imagem</h2>
+        <div class="button-group">
+            <input type="file" id="uploadPdf" accept="application/pdf" hidden>
+            <label for="uploadPdf" class="btn">Selecionar PDF</label>
+            <button id="downloadBtn" class="btn btn-success" disabled>Baixar PDF Modificado</button>
+        </div>
+        <p id="status">Aguardando arquivo...</p>
 
-    <script src="script.js"></script>
+    </div>
+
+
+    <div class="canvas-container" id="container">
+        <canvas id="pdfCanvas"></canvas>
+    </div>
+
+    <script src="script.js"></script>
+
 </body>
 </html>
