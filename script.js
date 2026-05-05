@@ -1,12 +1,11 @@
-const { PDFDocument, rgb } = PDFLib; // Extrai as classes da biblioteca
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+// Configuração do Worker
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
 let pdfBytes = null;
 let clickX = 0;
 let clickY = 0;
-const pdfScale = 1.5;
-const fieldSize = 100; // Tamanho do campo de imagem
+const pdfScale = 1.5; 
 
 const uploadInput = document.getElementById('uploadPdf');
 const canvas = document.getElementById('pdfCanvas');
@@ -23,13 +22,13 @@ uploadInput.addEventListener('change', async (e) => {
         statusText.innerText = "Lendo arquivo...";
         pdfBytes = await file.arrayBuffer();
         await renderPDF(pdfBytes);
-        downloadBtn.disabled = true; // Desabilita até o usuário clicar na posição
+        statusText.innerText = "PDF carregado! Clique onde deseja o campo de imagem.";
     } catch (err) {
         statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 2. Renderização visual
+// 2. Renderização
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: data });
     const pdf = await loadingTask.promise;
@@ -40,7 +39,6 @@ async function renderPDF(data) {
     canvas.height = viewport.height;
 
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-    statusText.innerText = "PDF carregado. Clique onde deseja inserir o campo de imagem.";
 }
 
 // 3. Marcação de posição
@@ -51,62 +49,73 @@ canvas.addEventListener('click', (e) => {
     clickX = e.clientX - rect.left;
     clickY = e.clientY - rect.top;
 
-    // Limpa e redesenha o marcador visual
+    // Redesenha para limpar marcações anteriores
     renderPDF(pdfBytes).then(() => {
+        ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
         ctx.strokeStyle = "#2563eb";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(clickX, clickY, fieldSize, fieldSize);
-        ctx.fillStyle = "rgba(37, 99, 235, 0.2)";
-        ctx.fillRect(clickX, clickY, fieldSize, fieldSize);
+        ctx.lineWidth = 2;
+        ctx.fillRect(clickX, clickY, 100, 100); // Tamanho ajustado para 100px
+        ctx.strokeRect(clickX, clickY, 100, 100);
         
-        statusText.innerText = "Posição definida! Clique em 'Baixar' para finalizar.";
+        statusText.innerText = "Posição definida! Pronto para baixar.";
         downloadBtn.disabled = false;
     });
 });
 
-// 4. Geração do PDF (Correção do Erro)
+// 4. Geração do PDF (Corrigido)
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Gerando PDF... Aguarde.";
         downloadBtn.disabled = true;
+        statusText.innerText = "Processando... aguarde.";
 
+        // USANDO PDFLib da forma correta
+        const { PDFDocument, rgb } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
-        const pages = pdfDoc.getPages();
-        const firstPage = pages[0];
+        const page = pdfDoc.getPages()[0];
+        const { height } = page.getSize();
 
-        // Nome único para evitar conflitos se o usuário baixar várias vezes
-        const fieldName = `img_field_${Date.now()}`;
-        const buttonField = form.createButton(fieldName);
+        // Criar o campo de botão (Placeholder de imagem)
+        const nameId = `img_field_${Math.floor(Math.random() * 1000)}`;
+        const buttonField = form.createButton(nameId);
 
-        // Ajuste de coordenadas (Inversão do eixo Y)
-        const pdfX = clickX / pdfScale;
-        const pdfY = (canvas.height - clickY - fieldSize) / pdfScale;
+        // Ajuste de coordenadas (PDF usa origem no canto inferior esquerdo)
+        const finalX = clickX / pdfScale;
+        const finalY = (canvas.height - clickY - 100) / pdfScale; 
+        const finalSize = 100 / pdfScale;
 
-        buttonField.addToPage(firstPage, {
-            x: pdfX,
-            y: pdfY,
-            width: fieldSize / pdfScale,
-            height: fieldSize / pdfScale,
+        buttonField.addToPage(page, {
+            x: finalX,
+            y: finalY,
+            width: finalSize,
+            height: finalSize,
+            backgroundColor: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.1, 0.4, 0.9),
+            borderWidth: 1,
         });
 
-        // Adiciona um rótulo básico ao botão para o usuário saber que é clicável
-        buttonField.setLabel('Clique para Imagem');
+        // Importante: Marcar como campo que pode ser clicado para upload (em leitores compatíveis)
+        // Nota: O comportamento de "upload" depende do leitor de PDF do usuário final.
 
-        const pdfBytesModificado = await pdfDoc.save();
+        const pdfModifiedBytes = await pdfDoc.save();
+        
+        // Gatilho de Download
+        const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "pdf_editavel_com_imagem.pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
 
-        // Download
-        const blob = new Blob([pdfBytesModificado], { type: "application/pdf" });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = "editavel_com_campo.pdf";
-        link.click();
-
-        statusText.innerText = "Sucesso! O arquivo foi baixado.";
+        statusText.innerText = "Sucesso! Verifique seus downloads.";
         downloadBtn.disabled = false;
+
     } catch (err) {
         console.error(err);
-        statusText.innerText = "Erro ao processar PDF: " + err.message;
+        statusText.innerText = "Erro ao gerar PDF: " + err.message;
         downloadBtn.disabled = false;
     }
 });
