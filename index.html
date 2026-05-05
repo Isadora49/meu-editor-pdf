@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de PDF - Adicionar Campo</title>
+    <title>Editor de PDF Pro</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 <body>
     <div class="controls">
-        <h2>Adicionar Campo d Imagem no PDF</h2>
-        <input type="file" id="uploadPdf" accept="application/pdf">
+        <h2>Adicionar Campo de Imagem</h2>
+        <div class="upload-area">
+            <input type="file" id="uploadPdf" accept="application/pdf">
+        </div>
         <button id="downloadBtn" disabled>Baixar PDF Modificado</button>
-        <p id="status">Faça o upload de um PDF para começar. Clique na página para definir a posição do campo.</p>
+        <p id="status">Aguardando arquivo...</p>
     </div>
 
     <div class="canvas-container">
