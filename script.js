@@ -23,14 +23,14 @@ uploadInput.addEventListener('change', async (e) => {
         statusText.innerText = "Lendo arquivo...";
         pdfBytes = await file.arrayBuffer();
         await renderPDF(pdfBytes);
-        statusText.innerText = "PDF carregado! Clique no local onde deseja o campo de imagem.";
+        statusText.innerText = "PDF carregado! Clique no local desejado.";
         downloadBtn.disabled = true; 
     } catch (err) {
         statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 3. Renderização Visual
+// 3. Renderização Visual no Canvas
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
     const pdf = await loadingTask.promise;
@@ -43,7 +43,7 @@ async function renderPDF(data) {
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-// 4. Marcação de posição
+// 4. Captura de clique
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
 
@@ -58,23 +58,24 @@ canvas.addEventListener('click', (e) => {
         ctx.fillRect(clickX, clickY, boxSize, boxSize);
         ctx.strokeRect(clickX, clickY, boxSize, boxSize);
         
-        statusText.innerText = "Posição definida! Clique em baixar.";
+        statusText.innerText = "Posição definida! Pronto para baixar.";
         downloadBtn.disabled = false;
     });
 });
 
-// 5. Geração do PDF com Script de Seleção de Imagem
+// 5. Geração do PDF com propriedades de Campo de Imagem
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Injetando campo de imagem...";
+        statusText.innerText = "Configurando campo de imagem...";
         downloadBtn.disabled = true;
 
-        const { PDFDocument, rgb } = PDFLib; 
+        const { PDFDocument, rgb, PDFName } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPages()[0];
         const { height: pHeight } = page.getSize();
 
+        // Cálculo de coordenadas
         const finalX = Number(clickX) / pdfScale;
         const finalY = pHeight - ((Number(clickY) + boxSize) / pdfScale);
         const finalSize = boxSize / pdfScale;
@@ -82,22 +83,30 @@ downloadBtn.addEventListener('click', async () => {
         const fieldName = `img_field_${Math.floor(Math.random() * 10000)}`;
         const buttonField = form.createButton(fieldName);
 
-        // Adiciona o botão com um rótulo indicativo
-        buttonField.addToPage('Clique para Foto', page, {
+        // Adiciona o botão à página
+        buttonField.addToPage(' ', page, {
             x: finalX,
             y: finalY,
             width: finalSize,
             height: finalSize,
-            backgroundColor: rgb(0.9, 0.9, 0.9),
-            borderColor: rgb(0.1, 0.4, 0.9),
+            backgroundColor: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.7, 0.7, 0.7),
             borderWidth: 1,
         });
 
-        // --- A MÁGICA PARA A IMAGEM FUNCIONAR ---
-        // Este script diz ao PDF: "Quando clicado, abra o seletor de arquivos e use como ícone"
+        // --- CONFIGURAÇÃO AVANÇADA PARA ADOBE ---
         buttonField.acroField.getWidgets().forEach((widget) => {
+            // 1. Configura o Layout como "Apenas Ícone" (/TP 1)
+            // Isso garante que a imagem selecionada preencha o campo
+            const MK = pdfDoc.context.obj({
+                TP: 1, // Layout: 1 significa "Apenas Ícone"
+                CA: '' // Remove qualquer texto residual
+            });
+            widget.dict.set(PDFName.of('MK'), MK);
+
+            // 2. Injeta o Script para abrir o seletor de imagem
             widget.dict.set(
-                PDFLib.PDFName.of('AA'), 
+                PDFName.of('AA'), 
                 pdfDoc.context.obj({
                     D: {
                         S: 'JavaScript',
@@ -109,18 +118,19 @@ downloadBtn.addEventListener('click', async () => {
 
         const pdfModifiedBytes = await pdfDoc.save();
         
+        // Gatilho de download
         const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_com_campo_imagem.pdf";
+        a.download = "pdf_final_com_imagem.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusText.innerText = "Sucesso! Use o Adobe Reader para testar o campo.";
+            statusText.innerText = "Concluído! TESTE NO ADOBE READER.";
             downloadBtn.disabled = false;
         }, 100);
 
