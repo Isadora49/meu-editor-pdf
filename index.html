@@ -3,99 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meu Editor de PDF</title>
+    <title>Editor de PDF - Adicionar Campo</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-        .box { border: 2px dashed #ccc; padding: 20px; margin-bottom: 20px; text-align: center; }
-        button { background-color: #2ea44f; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 16px;}
-        button:hover { background-color: #22863a; }
-        #status { margin-top: 15px; font-weight: bold; color: #333; }
-    </style>
 </head>
 <body>
-
-    <h1>Adicionar Imagem ao PDF</h1>
-
-    <div class="box">
-        <h3>1. Escolha o arquivo PDF</h3>
-        <input type="file" id="pdf-upload" accept="application/pdf">
+    <div class="controls">
+        <h2>Adicionar Campo de Imagem no PDF</h2>
+        <input type="file" id="uploadPdf" accept="application/pdf">
+        <button id="downloadBtn" disabled>Baixar PDF Modificado</button>
+        <p id="status">Faça o upload de um PDF para começar. Clique na página para definir a posição do campo.</p>
     </div>
 
-    <div class="box">
-        <h3>2. Escolha a Imagem (PNG ou JPG)</h3>
-        <input type="file" id="image-upload" accept="image/png, image/jpeg">
+    <div class="canvas-container">
+        <canvas id="pdfCanvas"></canvas>
     </div>
 
-    <button id="process-btn">Processar e Baixar PDF</button>
-    <div id="status"></div>
-
-    <script>
-        document.getElementById('process-btn').addEventListener('click', async () => {
-            const pdfInput = document.getElementById('pdf-upload').files[0];
-            const imageInput = document.getElementById('image-upload').files[0];
-            const statusDiv = document.getElementById('status');
-
-            // Validação de erros: checar se o usuário enviou os arquivos
-            if (!pdfInput || !imageInput) {
-                statusDiv.innerText = "Erro: Por favor, selecione um PDF e uma imagem primeiro!";
-                statusDiv.style.color = "red";
-                return;
-            }
-
-            try {
-                statusDiv.innerText = "Processando...";
-                statusDiv.style.color = "blue";
-
-                // 1. Ler o PDF como ArrayBuffer (formato que a biblioteca entende)
-                const pdfBytes = await pdfInput.arrayBuffer();
-                const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
-
-                // 2. Ler a Imagem
-                const imageBytes = await imageInput.arrayBuffer();
-                let pdfImage;
-                
-                // Checar se é PNG ou JPG para usar a função correta
-                if (imageInput.type === 'image/png') {
-                    pdfImage = await pdfDoc.embedPng(imageBytes);
-                } else {
-                    pdfImage = await pdfDoc.embedJpg(imageBytes);
-                }
-
-                // 3. Pegar a primeira página do PDF
-                const pages = pdfDoc.getPages();
-                const firstPage = pages[0];
-
-                // Redimensionar a imagem para caber (ex: 200px de largura)
-                const imgDims = pdfImage.scaleToFit(200, 200);
-
-                // 4. Desenhar a imagem na página (posição X e Y a partir do canto inferior esquerdo)
-                firstPage.drawImage(pdfImage, {
-                    x: 50,
-                    y: 50, 
-                    width: imgDims.width,
-                    height: imgDims.height,
-                });
-
-                // 5. Salvar o novo PDF modificado
-                const modifiedPdfBytes = await pdfDoc.save();
-
-                // 6. Criar um link para o navegador baixar o arquivo
-                const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'pdf_modificado.pdf';
-                link.click(); // Força o clique para iniciar o download
-
-                statusDiv.innerText = "Sucesso! O PDF foi baixado.";
-                statusDiv.style.color = "green";
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = "Ocorreu um erro ao processar o PDF. Veja o console.";
-                statusDiv.style.color = "red";
-            }
-        });
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
