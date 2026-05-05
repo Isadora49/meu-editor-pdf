@@ -1,34 +1,21 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de PDF - Adicionar Campo</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-
+    <meta charset="UTF-8">
+    <title>Criador de Documento Interativo</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="controls">
+        <h2>Criador de Campo de Imagem Dinâmico</h2>
+        <button id="generateBtn" class="btn btn-success">Gerar Documento Interativo</button>
+        <p id="status">Este documento permitirá carregar imagens diretamente no navegador.</p>
+    </div>
 
-    <div class="controls">
-        <h2>Adicionar Campo d Imagem</h2>
-        <div class="button-group">
-            <input type="file" id="uploadPdf" accept="application/pdf" hidden>
-            <label for="uploadPdf" class="btn">Selecionar PDF</label>
-            <button id="downloadBtn" class="btn btn-success" disabled>Baixar PDF Modificado</button>
-        </div>
-        <p id="status">Aguardando arquivo...</p>
+    <div class="canvas-container" id="container" style="width: 600px; height: 800px; background: white; border: 1px solid #ccc; position: relative;">
+        <p style="text-align: center; color: #aaa; margin-top: 50px;">O campo de imagem aparecerá aqui</p>
+    </div>
 
-    </div>
-
-
-    <div class="canvas-container" id="container">
-        <canvas id="pdfCanvas"></canvas>
-    </div>
-
-    <script src="script.js"></script>
-
+    <script src="script.js"></script>
 </body>
 </html>
