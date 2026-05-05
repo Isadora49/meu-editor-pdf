@@ -3,14 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de PDF - Adicionar Campo</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Editor de PDF - Adicionar Campo de Imagem</title>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --bg: #f8fafc;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            text-align: center;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-success { background: var(--success); }
+
+        .btn:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        .btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+
+        #status {
+            font-size: 0.9rem;
+            color: #4f3b75;
+            font-weight: 600;
+        }
+
+        .canvas-container {
+            border: 2px solid #651585;
+            border-radius: 4px;
+            overflow: auto;
+            max-width: 100%;
+            background: #525659;
+            padding: 20px;
+            cursor: crosshair;
+        }
+
+        canvas {
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+    </style>
 </head>
 <body>
+
     <div class="controls">
-        <h2>Adicionar Campo d Imagem</h2>
+        <h2>Adicionar Campo de Imagem no PDF</h2>
         <div class="button-group">
             <input type="file" id="uploadPdf" accept="application/pdf" hidden>
             <label for="uploadPdf" class="btn">Selecionar PDF</label>
@@ -23,6 +103,140 @@
         <canvas id="pdfCanvas"></canvas>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        // 1. Configuração da biblioteca de visualização (PDF.js)
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        let pdfBytes = null;
+        let clickX = 0;
+        let clickY = 0;
+        const pdfScale = 1.5; 
+        const boxSize = 100; 
+
+        const uploadInput = document.getElementById('uploadPdf');
+        const canvas = document.getElementById('pdfCanvas');
+        const ctx = canvas.getContext('2d');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusText = document.getElementById('status');
+
+        // 2. Upload do arquivo
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                statusText.innerText = "Lendo arquivo...";
+                pdfBytes = await file.arrayBuffer();
+                await renderPDF(pdfBytes);
+                statusText.innerText = "PDF carregado! Clique no local onde deseja o campo de imagem.";
+                downloadBtn.disabled = true; 
+            } catch (err) {
+                statusText.innerText = "Erro ao carregar PDF: " + err.message;
+            }
+        });
+
+        // 3. Desenhar o PDF na tela
+        async function renderPDF(data) {
+            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+
+            const viewport = page.getViewport({ scale: pdfScale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        }
+
+        // 4. Capturar o clique para definir a posição
+        canvas.addEventListener('click', (e) => {
+            if (!pdfBytes) return;
+
+            const rect = canvas.getBoundingClientRect();
+            clickX = Math.floor(e.clientX - rect.left);
+            clickY = Math.floor(e.clientY - rect.top);
+
+            renderPDF(pdfBytes).then(() => {
+                // Desenha o quadrado azul na tela como feedback visual
+                ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
+                ctx.strokeStyle = "#2563eb";
+                ctx.lineWidth = 2;
+                ctx.fillRect(clickX, clickY, boxSize, boxSize);
+                ctx.strokeRect(clickX, clickY, boxSize, boxSize);
+                
+                statusText.innerText = "Posição definida! Pode clicar em Baixar.";
+                downloadBtn.disabled = false;
+            });
+        });
+
+        // 5. Editar o PDF e fazer Download
+        downloadBtn.addEventListener('click', async () => {
+            try {
+                statusText.innerText = "Gerando o arquivo, aguarde...";
+                downloadBtn.disabled = true;
+
+                // Carrega a biblioteca de edição (pdf-lib)
+                const { PDFDocument, rgb } = PDFLib; 
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+                const form = pdfDoc.getForm();
+                const page = pdfDoc.getPages()[0];
+                
+                // Pega as medidas reais da página do PDF
+                const { width: pWidth, height: pHeight } = page.getSize();
+
+                // Garante que os números são válidos (proteção contra NaN)
+                const safeX = Number(clickX) || 0;
+                const safeY = Number(clickY) || 0;
+                const safeScale = Number(pdfScale) || 1;
+                const safeBox = Number(boxSize) || 100;
+
+                // Converte as coordenadas da tela para as coordenadas do PDF
+                const finalX = safeX / safeScale;
+                const finalY = pHeight - ((safeY + safeBox) / safeScale);
+                const finalSize = safeBox / safeScale;
+
+                // Cria o campo (Botão)
+                const fieldName = `campo_imagem_${Math.floor(Math.random() * 10000)}`;
+                const buttonField = form.createButton(fieldName);
+
+                // Adiciona o campo na posição clicada (Sem o setLabel que causava o erro)
+                buttonField.addToPage(page, {
+                    x: finalX,
+                    y: finalY,
+                    width: finalSize,
+                    height: finalSize,
+                    backgroundColor: rgb(0.95, 0.95, 0.95),
+                    borderColor: rgb(0.1, 0.4, 0.9),
+                    borderWidth: 1,
+                });
+
+                // Salva o PDF modificado
+                const pdfModifiedBytes = await pdfDoc.save();
+                
+                // Força o download no navegador
+                const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "pdf_pronto_com_campo.pdf";
+                document.body.appendChild(a);
+                a.click();
+                
+                // Limpeza do sistema
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    statusText.innerText = "Download concluído com sucesso!";
+                    downloadBtn.disabled = false;
+                }, 100);
+
+            } catch (err) {
+                console.error("Erro completo:", err);
+                statusText.innerText = "Erro ao gerar: " + err.message;
+                downloadBtn.disabled = false;
+            }
+        });
+    </script>
 </body>
 </html>
