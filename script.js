@@ -5,6 +5,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 let pdfBytes = null;
 let clickX = 0;
 let clickY = 0;
+let externalImageBytes = null; // Armazena a imagem do link
 const pdfScale = 1.5; 
 const boxSize = 100; 
 
@@ -18,127 +19,122 @@ const statusText = document.getElementById('status');
 uploadInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     try {
         statusText.innerText = "Lendo arquivo...";
         pdfBytes = await file.arrayBuffer();
         await renderPDF(pdfBytes);
-        statusText.innerText = "PDF carregado! Clique no local desejado.";
-        downloadBtn.disabled = true; 
+        statusText.innerText = "PDF carregado! Clique onde quer a imagem e aperte CTRL + I";
     } catch (err) {
         statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 3. Renderização Visual
+// 3. Renderização no Canvas
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
     const pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
-
     const viewport = page.getViewport({ scale: pdfScale });
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
 // 4. Captura de clique
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
-
     const rect = canvas.getBoundingClientRect();
-    clickX = Math.floor(e.clientX - rect.left);
-    clickY = Math.floor(e.clientY - rect.top);
+    clickX = e.clientX - rect.left;
+    clickY = e.clientY - rect.top;
 
     renderPDF(pdfBytes).then(() => {
-        ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
         ctx.strokeStyle = "#2563eb";
         ctx.lineWidth = 2;
-        ctx.fillRect(clickX, clickY, boxSize, boxSize);
         ctx.strokeRect(clickX, clickY, boxSize, boxSize);
-        
-        statusText.innerText = "Posição definida! Gerando PDF...";
-        downloadBtn.disabled = false;
+        statusText.innerText = "Local selecionado! Agora aperte CTRL + I para colar o link da imagem.";
     });
 });
 
-// 5. Geração do PDF Híbrido (Navegador + Adobe)
+// 5. Lógica Estilo FIRECAST (CTRL + I)
+window.addEventListener('keydown', async (e) => {
+    // Verifica se apertou Ctrl + I
+    if (e.ctrlKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        
+        if (!pdfBytes) {
+            alert("Primeiro carregue um PDF!");
+            return;
+        }
+
+        const url = prompt("Cole o link (URL) da imagem aqui:");
+        if (url) {
+            statusText.innerText = "Baixando imagem do link...";
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Não foi possível baixar a imagem.");
+                
+                externalImageBytes = await response.arrayBuffer();
+                
+                // Mostra uma prévia no canvas
+                const img = new Image();
+                img.onload = () => {
+                    ctx.drawImage(img, clickX, clickY, boxSize, boxSize);
+                    statusText.innerText = "Imagem carregada! Clique em 'Baixar PDF Modificado'.";
+                    downloadBtn.disabled = false;
+                };
+                img.src = url;
+            } catch (err) {
+                alert("Erro ao buscar imagem: Verifique o link ou se o site permite acesso (CORS).");
+                statusText.innerText = "Erro no link da imagem.";
+            }
+        }
+    }
+});
+
+// 6. Geração do PDF Final (Injetando a imagem nos bytes)
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Processando...";
-        downloadBtn.disabled = true;
-
-        const { PDFDocument, rgb, PDFName, PDFNumber } = PDFLib; 
+        statusText.innerText = "Gerando PDF final...";
+        const { PDFDocument } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        const form = pdfDoc.getForm();
         const page = pdfDoc.getPages()[0];
         const { height: pHeight } = page.getSize();
 
-        const finalX = Number(clickX) / pdfScale;
-        const finalY = pHeight - ((Number(clickY) + boxSize) / pdfScale);
+        // Converte coordenadas do canvas para o PDF
+        const finalX = clickX / pdfScale;
+        const finalY = pHeight - ((clickY + boxSize) / pdfScale);
         const finalSize = boxSize / pdfScale;
 
-        const fieldName = `img_field_${Math.floor(Math.random() * 10000)}`;
-        
-        // Criamos como botão, mas vamos forçar flags de interação
-        const buttonField = form.createButton(fieldName);
-        
-        buttonField.addToPage('Clique/Arraste Imagem', page, {
-            x: finalX,
-            y: finalY,
-            width: finalSize,
-            height: finalSize,
-            backgroundColor: rgb(0.9, 0.9, 0.9),
-            borderColor: rgb(0.2, 0.5, 1),
-            borderWidth: 1,
-        });
+        // Se houver uma imagem carregada via link, injeta ela
+        if (externalImageBytes) {
+            let image;
+            // Tenta carregar como JPG, se falhar tenta PNG
+            try {
+                image = await pdfDoc.embedJpg(externalImageBytes);
+            } catch {
+                image = await pdfDoc.embedPng(externalImageBytes);
+            }
 
-        // ACROFORM MODIFICAÇÃO PARA COMPATIBILIDADE
-        const widget = buttonField.acroField.getWidgets()[0];
-        
-        // MK: Configura a aparência (TP 1 = Somente Ícone)
-        const MK = pdfDoc.context.obj({
-            TP: 1, 
-            CA: '' 
-        });
-        widget.dict.set(PDFName.of('MK'), MK);
-
-        // AA: Script para Adobe
-        widget.dict.set(
-            PDFName.of('AA'), 
-            pdfDoc.context.obj({
-                D: {
-                    S: 'JavaScript',
-                    JS: 'event.target.buttonImportIcon();'
-                }
-            })
-        );
-
-        // FORÇAR ATUALIZAÇÃO DO FORMULÁRIO (Essencial para navegadores)
-        // Isso "avisa" o Chrome que o campo deve ser clicável
-        form.updateFieldAppearances();
+            page.drawImage(image, {
+                x: finalX,
+                y: finalY,
+                width: finalSize,
+                height: finalSize,
+            });
+        }
 
         const pdfModifiedBytes = await pdfDoc.save();
-        
         const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_interativo.pdf";
-        document.body.appendChild(a);
+        a.download = "pdf_com_imagem_firecast.pdf";
         a.click();
         
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            statusText.innerText = "Download concluído!";
-            downloadBtn.disabled = false;
-        }, 100);
+        statusText.innerText = "Concluído! O PDF já contém a imagem e funciona em qualquer navegador.";
 
     } catch (err) {
         console.error(err);
-        statusText.innerText = "Erro: " + err.message;
-        downloadBtn.disabled = false;
+        statusText.innerText = "Erro ao gerar PDF: " + err.message;
     }
 });
