@@ -12,7 +12,6 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    color: #1e293b;
 }
 
 .controls {
@@ -21,49 +20,56 @@ body {
     border-radius: 12px;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     margin-bottom: 30px;
-    width: 100%;
-    max-width: 500px;
     text-align: center;
+    width: 100%;
+    max-width: 600px;
 }
 
-button {
-    background-color: var(--primary);
-    color: white;
-    border: none;
-    padding: 12px 24px;
+.button-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 15px 0;
+}
+
+.btn {
+    padding: 10px 20px;
     border-radius: 6px;
-    font-weight: 600;
+    border: none;
     cursor: pointer;
+    font-weight: 600;
     transition: all 0.2s;
-    margin-top: 15px;
+    background: var(--primary);
+    color: white;
+    text-decoration: none;
+    display: inline-block;
 }
 
-button:disabled {
-    background-color: #cbd6e1;
+.btn-success { background: var(--success); }
+
+.btn:disabled {
+    background: #cbd5e1;
     cursor: not-allowed;
 }
 
-button:hover:not(:disabled) {
-    background-color: #1d4ed8;
-    transform: translateY(-1px);
-}
+.btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 
 #status {
     font-size: 0.9rem;
-    margin-top: 15px;
     color: #64748b;
 }
 
 .canvas-container {
-    background: #e2e8f0;
-    padding: 10px;
+    border: 2px solid #e2e8f0;
     border-radius: 4px;
     overflow: auto;
-    max-width: 95vw;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+    max-width: 100%;
+    background: #525659;
+    padding: 20px;
+    cursor: crosshair;
 }
 
 canvas {
-    cursor: crosshair;
-    display: block;
+    background: white;
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
 }
