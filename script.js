@@ -1,12 +1,12 @@
-// 1. Configuração do Worker (Mantendo as versões sincronizadas)
+// 1. Configuração do Worker
 const pdfjsLib = window['pdfjs-dist/build/pdf'];
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 let pdfBytes = null;
-let clickX = null;
-let clickY = null;
+let clickX = 0;
+let clickY = 0;
 const pdfScale = 1.5; 
-const boxSize = 100; // Tamanho do campo no navegador
+const boxSize = 100; 
 
 const uploadInput = document.getElementById('uploadPdf');
 const canvas = document.getElementById('pdfCanvas');
@@ -14,7 +14,7 @@ const ctx = canvas.getContext('2d');
 const downloadBtn = document.getElementById('downloadBtn');
 const statusText = document.getElementById('status');
 
-// 2. Upload e leitura do arquivo
+// 2. Upload e leitura
 uploadInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -24,13 +24,13 @@ uploadInput.addEventListener('change', async (e) => {
         pdfBytes = await file.arrayBuffer();
         await renderPDF(pdfBytes);
         statusText.innerText = "PDF carregado! Clique no local onde deseja o campo de imagem.";
-        downloadBtn.disabled = true;
+        downloadBtn.disabled = true; 
     } catch (err) {
         statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 3. Renderização Visual no Canvas
+// 3. Renderização Visual
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
     const pdf = await loadingTask.promise;
@@ -43,14 +43,14 @@ async function renderPDF(data) {
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-// 4. Captura do clique e marcador visual
+// 4. Marcação de posição
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
 
     const rect = canvas.getBoundingClientRect();
-    // Arredondamos para evitar dízimas que quebram o PDF
-    clickX = Math.round(e.clientX - rect.left);
-    clickY = Math.round(e.clientY - rect.top);
+    // Math.floor garante que teremos números inteiros puros
+    clickX = Math.floor(e.clientX - rect.left);
+    clickY = Math.floor(e.clientY - rect.top);
 
     renderPDF(pdfBytes).then(() => {
         ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
@@ -59,42 +59,45 @@ canvas.addEventListener('click', (e) => {
         ctx.fillRect(clickX, clickY, boxSize, boxSize);
         ctx.strokeRect(clickX, clickY, boxSize, boxSize);
         
-        statusText.innerText = "Posição definida! Agora você pode baixar.";
+        statusText.innerText = "Posição definida! Clique em baixar.";
         downloadBtn.disabled = false;
     });
 });
 
-// 5. Geração do PDF - SOLUÇÃO DO ERRO NaN
+// 5. Geração do PDF - CORREÇÃO DEFINITIVA
 downloadBtn.addEventListener('click', async () => {
-    if (!pdfBytes || clickX === null) return;
-
     try {
+        statusText.innerText = "Processando...";
         downloadBtn.disabled = true;
-        statusText.innerText = "Gerando PDF interativo...";
 
         const { PDFDocument, rgb } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        const page = pdfDoc.getPages()[0];
         const form = pdfDoc.getForm();
+        const page = pdfDoc.getPages()[0];
         
-        // Tamanho real da página no PDF (em points)
+        // Medida real da página
         const { width: pWidth, height: pHeight } = page.getSize();
 
-        // CÁLCULO SEGURO E ARREDONDADO
-        // sScale precisa ser o mesmo usado na renderização
-        const finalSize = Math.round(boxSize / pdfScale);
-        const finalX = Math.round(clickX / pdfScale);
-        
-        // Inversão do Eixo Y: O PDF conta de baixo para cima.
-        // pHeight (total) - posição do clique - tamanho do box.
-        const finalY = Math.round(pHeight - ((clickY + boxSize) / pdfScale));
+        // CÁLCULO SEGURO COM VALORES PADRÃO (Caso algo falhe no clique)
+        const safeX = Number(clickX) || 0;
+        const safeY = Number(clickY) || 0;
+        const safeScale = Number(pdfScale) || 1;
+        const safeBox = Number(boxSize) || 100;
 
-        // NUNCA use nomes de campos com espaços ou caracteres especiais
-        const fieldName = `img_target_${Math.floor(Math.random() * 10000)}`;
-        const button = form.createButton(fieldName);
+        // Conversão para coordenadas do PDF
+        const finalX = safeX / safeScale;
+        const finalY = pHeight - ((safeY + safeBox) / safeScale);
+        const finalSize = safeBox / safeScale;
 
-        // O SEGREDO: addToPage sem caption/label evita o cálculo de fonte que gera o NaN
-        button.addToPage(page, {
+        // NOME DO CAMPO: Deve ser estritamente uma string
+        const fieldName = `field_${Math.floor(Math.random() * 10000)}`;
+        const buttonField = form.createButton(fieldName);
+
+        // CONFIGURAÇÃO DO BOTÃO ANTES DE ADICIONAR À PÁGINA
+        // Isso evita que o validador interno busque labels inexistentes
+        buttonField.setLabel(' '); // Um espaço em branco em vez de vazio ou NaN
+
+        buttonField.addToPage(page, {
             x: finalX,
             y: finalY,
             width: finalSize,
@@ -104,26 +107,22 @@ downloadBtn.addEventListener('click', async () => {
             borderWidth: 1,
         });
 
-        // Não usamos button.setLabel("") pois isso aciona o motor de texto do pdf-lib
-        // que é o culpado pelo erro NaN em coordenadas fracionadas.
-
         const pdfModifiedBytes = await pdfDoc.save();
         
-        // Processo de Download
         const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_para_imagem.pdf";
+        a.download = "pdf_editavel.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusText.innerText = "Sucesso! Abra o arquivo no Adobe Reader para inserir a imagem.";
+            statusText.innerText = "Sucesso! Verifique seus downloads.";
             downloadBtn.disabled = false;
-        }, 500);
+        }, 100);
 
     } catch (err) {
         console.error("Erro completo:", err);
