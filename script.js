@@ -48,7 +48,6 @@ canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
 
     const rect = canvas.getBoundingClientRect();
-    // Math.floor garante que teremos números inteiros puros
     clickX = Math.floor(e.clientX - rect.left);
     clickY = Math.floor(e.clientY - rect.top);
 
@@ -64,46 +63,48 @@ canvas.addEventListener('click', (e) => {
     });
 });
 
-// 5. Geração do PDF - AGORA VAI FUNCIONAR!
+// 5. Geração do PDF com Script de Seleção de Imagem
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Processando...";
+        statusText.innerText = "Injetando campo de imagem...";
         downloadBtn.disabled = true;
 
         const { PDFDocument, rgb } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPages()[0];
-        
-        // Medida real da página
-        const { width: pWidth, height: pHeight } = page.getSize();
+        const { height: pHeight } = page.getSize();
 
-        // CÁLCULO SEGURO COM VALORES PADRÃO (Caso algo falhe no clique)
-        const safeX = Number(clickX) || 0;
-        const safeY = Number(clickY) || 0;
-        const safeScale = Number(pdfScale) || 1;
-        const safeBox = Number(boxSize) || 100;
+        const finalX = Number(clickX) / pdfScale;
+        const finalY = pHeight - ((Number(clickY) + boxSize) / pdfScale);
+        const finalSize = boxSize / pdfScale;
 
-        // Conversão para coordenadas do PDF
-        const finalX = safeX / safeScale;
-        const finalY = pHeight - ((safeY + safeBox) / safeScale);
-        const finalSize = safeBox / safeScale;
-
-        // NOME DO CAMPO: Deve ser estritamente uma string
-        const fieldName = `field_${Math.floor(Math.random() * 10000)}`;
+        const fieldName = `img_field_${Math.floor(Math.random() * 10000)}`;
         const buttonField = form.createButton(fieldName);
 
-        // O GRANDE SEGREDO REVELADO: 
-        // O primeiro argumento de addToPage em um botão é OBRIGATORIAMENTE o texto dele!
-        // Passamos ' ' (um espaço) para ser invisível e não dar erro de NaN, e então a página.
-        buttonField.addToPage(' ', page, {
+        // Adiciona o botão com um rótulo indicativo
+        buttonField.addToPage('Clique para Foto', page, {
             x: finalX,
             y: finalY,
             width: finalSize,
             height: finalSize,
-            backgroundColor: rgb(0.95, 0.95, 0.95),
+            backgroundColor: rgb(0.9, 0.9, 0.9),
             borderColor: rgb(0.1, 0.4, 0.9),
             borderWidth: 1,
+        });
+
+        // --- A MÁGICA PARA A IMAGEM FUNCIONAR ---
+        // Este script diz ao PDF: "Quando clicado, abra o seletor de arquivos e use como ícone"
+        buttonField.acroField.getWidgets().forEach((widget) => {
+            widget.dict.set(
+                PDFLib.PDFName.of('AA'), 
+                pdfDoc.context.obj({
+                    D: {
+                        S: 'JavaScript',
+                        JS: 'event.target.buttonImportIcon();'
+                    }
+                })
+            );
         });
 
         const pdfModifiedBytes = await pdfDoc.save();
@@ -112,20 +113,20 @@ downloadBtn.addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_editavel.pdf";
+        a.download = "pdf_com_campo_imagem.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusText.innerText = "Sucesso! Verifique seus downloads.";
+            statusText.innerText = "Sucesso! Use o Adobe Reader para testar o campo.";
             downloadBtn.disabled = false;
         }, 100);
 
     } catch (err) {
-        console.error("Erro completo:", err);
-        statusText.innerText = "Erro ao gerar: " + err.message;
+        console.error(err);
+        statusText.innerText = "Erro: " + err.message;
         downloadBtn.disabled = false;
     }
 });
