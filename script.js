@@ -5,8 +5,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 let pdfBytes = null;
 let clickX = 0;
 let clickY = 0;
-const pdfScale = 1.5; 
-const boxSize = 100; 
+const pdfScale = 1.5; 
+const boxSize = 100; 
 
 const uploadInput = document.getElementById('uploadPdf');
 const canvas = document.getElementById('pdfCanvas');
@@ -16,108 +16,127 @@ const statusText = document.getElementById('status');
 
 // 2. Upload e leitura
 uploadInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-    try {
-        statusText.innerText = "Lendo arquivo...";
-        pdfBytes = await file.arrayBuffer();
-        await renderPDF(pdfBytes);
-        statusText.innerText = "PDF carregado! Clique onde deseja o campo de Link da Imagem.";
-        downloadBtn.disabled = true; 
-    } catch (err) {
-        statusText.innerText = "Erro ao carregar PDF: " + err.message;
-    }
+    try {
+        statusText.innerText = "Lendo arquivo...";
+        pdfBytes = await file.arrayBuffer();
+        await renderPDF(pdfBytes);
+        statusText.innerText = "PDF carregado! Clique no local desejado.";
+        downloadBtn.disabled = true; 
+    } catch (err) {
+        statusText.innerText = "Erro ao carregar PDF: " + err.message;
+    }
 });
 
-// 3. Renderização Visual
+// 3. Renderização Visual no Canvas
 async function renderPDF(data) {
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
-    const pdf = await loadingTask.promise;
-    const page = await pdf.getPage(1);
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
 
-    const viewport = page.getViewport({ scale: pdfScale });
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    const viewport = page.getViewport({ scale: pdfScale });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
 
-    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-// 4. Marcação de posição
+// 4. Captura de clique
 canvas.addEventListener('click', (e) => {
-    if (!pdfBytes) return;
+    if (!pdfBytes) return;
 
-    const rect = canvas.getBoundingClientRect();
-    clickX = Math.floor(e.clientX - rect.left);
-    clickY = Math.floor(e.clientY - rect.top);
+    const rect = canvas.getBoundingClientRect();
+    clickX = Math.floor(e.clientX - rect.left);
+    clickY = Math.floor(e.clientY - rect.top);
 
-    renderPDF(pdfBytes).then(() => {
-        ctx.fillStyle = "rgba(16, 163, 74, 0.2)"; // Verde suave para indicar campo de texto
-        ctx.strokeStyle = "#16a34a";
-        ctx.lineWidth = 2;
-        ctx.fillRect(clickX, clickY, boxSize, 40); // Campo mais baixo, estilo input
-        ctx.strokeRect(clickX, clickY, boxSize, 40);
-        
-        statusText.innerText = "Campo de Link definido! Clique em baixar.";
-        downloadBtn.disabled = false;
-    });
+    renderPDF(pdfBytes).then(() => {
+        ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
+        ctx.strokeStyle = "#2563eb";
+        ctx.lineWidth = 2;
+        ctx.fillRect(clickX, clickY, boxSize, boxSize);
+        ctx.strokeRect(clickX, clickY, boxSize, boxSize);
+        
+        statusText.innerText = "Posição definida! Pronto para baixar.";
+        downloadBtn.disabled = false;
+    });
 });
 
-// 5. Geração do PDF com Campo de Texto (URL)
+// 5. Geração do PDF com propriedades de Campo de Imagem
 downloadBtn.addEventListener('click', async () => {
-    try {
-        statusText.innerText = "Criando campo de texto...";
-        downloadBtn.disabled = true;
+    try {
+        statusText.innerText = "Configurando campo de imagem...";
+        downloadBtn.disabled = true;
 
-        const { PDFDocument, rgb } = PDFLib; 
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-        const form = pdfDoc.getForm();
-        const page = pdfDoc.getPages()[0];
-        const { height: pHeight } = page.getSize();
+        const { PDFDocument, rgb, PDFName } = PDFLib; 
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const form = pdfDoc.getForm();
+        const page = pdfDoc.getPages()[0];
+        const { height: pHeight } = page.getSize();
 
-        // Conversão de coordenadas
-        const finalX = Number(clickX) / pdfScale;
-        const finalY = pHeight - ((Number(clickY) + 40) / pdfScale);
-        const finalWidth = boxSize / pdfScale;
-        const finalHeight = 40 / pdfScale;
+        // Cálculo de coordenadas
+        const finalX = Number(clickX) / pdfScale;
+        const finalY = pHeight - ((Number(clickY) + boxSize) / pdfScale);
+        const finalSize = boxSize / pdfScale;
 
-        // CRIANDO O CAMPO DE TEXTO
-        const textField = form.createTextField(`url_field_${Math.floor(Math.random() * 10000)}`);
-        textField.setText('Cole o link aqui'); // Placeholder
-        
-        textField.addToPage(page, {
-            x: finalX,
-            y: finalY,
-            width: finalWidth,
-            height: finalHeight,
-            backgroundColor: rgb(1, 1, 1),
-            borderColor: rgb(0.1, 0.6, 0.3),
-            borderWidth: 1,
-        });
+        const fieldName = `img_field_${Math.floor(Math.random() * 10000)}`;
+        const buttonField = form.createButton(fieldName);
 
-        // Configurações para facilitar a colagem do link
-        textField.setFontSize(10);
+        // Adiciona o botão à página
+        buttonField.addToPage(' ', page, {
+            x: finalX,
+            y: finalY,
+            width: finalSize,
+            height: finalSize,
+            backgroundColor: rgb(0.95, 0.95, 0.95),
+            borderColor: rgb(0.7, 0.7, 0.7),
+            borderWidth: 1,
+        });
 
-        const pdfModifiedBytes = await pdfDoc.save();
-        
-        const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "pdf_com_link.pdf";
-        document.body.appendChild(a);
-        a.click();
-        
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            statusText.innerText = "Sucesso! O campo de link funciona em qualquer navegador.";
-            downloadBtn.disabled = false;
-        }, 100);
+        // --- CONFIGURAÇÃO AVANÇADA PARA ADOBE ---
+        buttonField.acroField.getWidgets().forEach((widget) => {
+            // 1. Configura o Layout como "Apenas Ícone" (/TP 1)
+            // Isso garante que a imagem selecionada preencha o campo
+            const MK = pdfDoc.context.obj({
+                TP: 1, // Layout: 1 significa "Apenas Ícone"
+                CA: '' // Remove qualquer texto residual
+            });
+            widget.dict.set(PDFName.of('MK'), MK);
 
-    } catch (err) {
-        console.error(err);
-        statusText.innerText = "Erro: " + err.message;
-        downloadBtn.disabled = false;
-    }
+            // 2. Injeta o Script para abrir o seletor de imagem
+            widget.dict.set(
+                PDFName.of('AA'), 
+                pdfDoc.context.obj({
+                    D: {
+                        S: 'JavaScript',
+                        JS: 'event.target.buttonImportIcon();'
+                    }
+                })
+            );
+        });
+
+        const pdfModifiedBytes = await pdfDoc.save();
+        
+        // Gatilho de download
+        const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "pdf_final_com_imagem.pdf";
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            statusText.innerText = "Concluído! TESTE NO ADOBE READER.";
+            downloadBtn.disabled = false;
+        }, 100);
+
+    } catch (err) {
+        console.error(err);
+        statusText.innerText = "Erro: " + err.message;
+        downloadBtn.disabled = false;
+    }
 });
