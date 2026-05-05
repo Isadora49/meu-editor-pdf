@@ -1,12 +1,12 @@
-// Configuração do Worker - Mantendo a sua versão funcional
+// 1. Configuração do Worker (Mantendo sua versão funcional)
 const pdfjsLib = window['pdfjs-dist/build/pdf'];
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 let pdfBytes = null;
-let clickX = 0;
-let clickY = 0;
+let clickX = null; // Iniciamos como null para validar se houve clique
+let clickY = null;
 const pdfScale = 1.5; 
-const boxSize = 100; 
+const boxSize = 100; // Tamanho do quadrado no navegador
 
 const uploadInput = document.getElementById('uploadPdf');
 const canvas = document.getElementById('pdfCanvas');
@@ -14,24 +14,23 @@ const ctx = canvas.getContext('2d');
 const downloadBtn = document.getElementById('downloadBtn');
 const statusText = document.getElementById('status');
 
-// 1. Upload e leitura
+// 2. Upload e leitura
 uploadInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     try {
         statusText.innerText = "Lendo arquivo...";
-        const buffer = await file.arrayBuffer();
-        pdfBytes = buffer; // Armazena o buffer original
+        const arrayBuffer = await file.arrayBuffer();
+        pdfBytes = arrayBuffer; 
         await renderPDF(pdfBytes);
-        statusText.innerText = "PDF carregado! Clique no local desejado para o campo.";
-        downloadBtn.disabled = true;
+        statusText.innerText = "PDF carregado! Clique no local onde deseja o campo de imagem.";
     } catch (err) {
-        statusText.innerText = "Erro ao carregar: " + err.message;
+        statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 2. Renderização
+// 3. Renderização Visual
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: data });
     const pdf = await loadingTask.promise;
@@ -44,16 +43,16 @@ async function renderPDF(data) {
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-// 3. Captura do clique
+// 4. Marcação de posição
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
 
     const rect = canvas.getBoundingClientRect();
-    // Forçamos o arredondamento imediato para evitar dízimas periódicas
+    // Forçamos a conversão para Inteiro para evitar dízimas infinitas
     clickX = Math.round(e.clientX - rect.left);
     clickY = Math.round(e.clientY - rect.top);
 
-    // Feedback visual
+    // Redesenha para limpar e mostrar o feedback
     renderPDF(pdfBytes).then(() => {
         ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
         ctx.strokeStyle = "#2563eb";
@@ -61,67 +60,67 @@ canvas.addEventListener('click', (e) => {
         ctx.fillRect(clickX, clickY, boxSize, boxSize);
         ctx.strokeRect(clickX, clickY, boxSize, boxSize);
         
-        statusText.innerText = `Posição marcada (X:${clickX} Y:${clickY}). Pronto para baixar.`;
+        statusText.innerText = "Posição definida! Agora clique em baixar.";
         downloadBtn.disabled = false;
     });
 });
 
-// 4. Geração do PDF - CORREÇÃO DO ERRO DE VALIDAÇÃO
+// 5. Geração do PDF - CORREÇÃO DO ERRO NaN
 downloadBtn.addEventListener('click', async () => {
+    if (clickX === null || clickY === null) {
+        alert("Por favor, clique no PDF primeiro.");
+        return;
+    }
+
     try {
-        if (!pdfBytes) return;
         downloadBtn.disabled = true;
-        statusText.innerText = "Processando... aguarde.";
+        statusText.innerText = "Processando arquivo...";
 
+        // IMPORTANTE: Carregar a biblioteca do objeto global
         const { PDFDocument, rgb } = PDFLib; 
-        // Carrega uma cópia limpa do buffer
-        const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
+        const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
-        const pages = pdfDoc.getPages();
-        const firstPage = pages[0];
+        const page = pdfDoc.getPages()[0];
         
-        // Pegamos o tamanho real da página do PDF
-        const { width: pWidth, height: pHeight } = firstPage.getSize();
+        // Medida real da página no PDF (Pontos)
+        const { width: pWidth, height: pHeight } = page.getSize();
 
-        // --- CÁLCULO DAS COORDENADAS COM VALIDAÇÃO ANTI-NaN ---
-        // Garantimos que todos os valores usados na conta são números válidos
-        const safeScale = Number(pdfScale) || 1.5;
-        const safeBox = Number(boxSize) || 100;
+        // CÁLCULO DE COORDENADAS (O segredo está em converter tudo para Number explicitamente)
+        const sScale = Number(pdfScale);
+        const sBox = Number(boxSize);
         
-        // No PDF, o Y=0 é o RODAPÉ da página. No navegador, o Y=0 é o TOPO.
-        // A conta abaixo converte e inverte o eixo Y com segurança.
-        const finalX = Number(clickX / safeScale);
-        const finalY = Number(pHeight - ((clickY + safeBox) / safeScale));
-        const finalW = Number(safeBox / safeScale);
-        const finalH = Number(safeBox / safeScale);
+        // Inversão do Eixo Y (PDF começa de baixo)
+        // Usamos Math.max para garantir que não seja negativo e Number para o pdf-lib
+        const finalX = Number(clickX / sScale);
+        const finalY = Number(pHeight - ((clickY + sBox) / sScale));
+        const finalSize = Number(sBox / sScale);
 
-        // LOG DE DEBUG (Aparecerá no console F12 caso dê erro novamente)
-        console.log("Calculados:", { finalX, finalY, finalW, finalH, pHeight });
+        // Validação final anti-NaN
+        if (isNaN(finalX) || isNaN(finalY) || isNaN(finalSize)) {
+            throw new Error("Erro interno de cálculo. Tente recarregar a página.");
+        }
 
-        // VERIFICAÇÃO FINAL: Se algo ainda for NaN, usamos valores padrão para não travar
-        const x = isNaN(finalX) ? 50 : finalX;
-        const y = isNaN(finalY) ? 50 : finalY;
-        const w = isNaN(finalW) ? 100 : finalW;
-        const h = isNaN(finalH) ? 100 : finalH;
+        // Criar o campo de botão
+        const nameId = "img_" + Math.random().toString(36).substr(2, 9);
+        const buttonField = form.createButton(nameId);
 
-        // Gerar um ID de campo único como STRING pura
-        const fieldId = "field_" + Math.random().toString(36).substr(2, 9);
-        const buttonField = form.createButton(fieldId);
-
-        // APLICAÇÃO AO PDF
-        buttonField.addToPage(firstPage, {
-            x: x,
-            y: y,
-            width: w,
-            height: h,
-            backgroundColor: rgb(0.95, 0.95, 0.95),
-            borderColor: rgb(0, 0, 0),
-            borderWidth: 1
+        // Configuração do campo
+        buttonField.addToPage(page, {
+            x: finalX,
+            y: finalY,
+            width: finalSize,
+            height: finalSize,
+            backgroundColor: rgb(0.9, 0.9, 0.9),
+            borderColor: rgb(0.1, 0.4, 0.9),
+            borderWidth: 1,
         });
+
+        // Adiciona um rótulo vazio para evitar o erro de "text"
+        buttonField.setLabel("");
 
         const pdfModifiedBytes = await pdfDoc.save();
         
-        // Processo de Download
+        // Gatilho de Download
         const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -130,18 +129,18 @@ downloadBtn.addEventListener('click', async () => {
         document.body.appendChild(a);
         a.click();
         
-        // Limpar memória
+        // Limpeza de memória
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        }, 200);
+        }, 100);
 
-        statusText.innerText = "Sucesso! Verifique seus downloads.";
+        statusText.innerText = "Sucesso! Arquivo gerado.";
         downloadBtn.disabled = false;
 
     } catch (err) {
-        console.error("Falha detalhada:", err);
-        statusText.innerText = "Erro crítico: " + err.message;
+        console.error("Erro detalhado:", err);
+        statusText.innerText = "Erro: " + err.message;
         downloadBtn.disabled = false;
     }
 });
