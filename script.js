@@ -1,12 +1,12 @@
-// Configuração do Worker
+// Configuração do Worker - Mantendo a versão que você confirmou que funciona
 const pdfjsLib = window['pdfjs-dist/build/pdf'];
-// A versão aqui (2.16.105) DEVE ser igual à do HTML
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 let pdfBytes = null;
 let clickX = 0;
 let clickY = 0;
 const pdfScale = 1.5; 
+const boxSize = 100; // Tamanho visual do quadrado no navegador
 
 const uploadInput = document.getElementById('uploadPdf');
 const canvas = document.getElementById('pdfCanvas');
@@ -23,13 +23,14 @@ uploadInput.addEventListener('change', async (e) => {
         statusText.innerText = "Lendo arquivo...";
         pdfBytes = await file.arrayBuffer();
         await renderPDF(pdfBytes);
-        statusText.innerText = "PDF carregado! Clique onde deseja o campo de imagem.";
+        statusText.innerText = "PDF carregado! Clique no local onde deseja o campo de imagem.";
+        downloadBtn.disabled = true; // Só habilita após o clique
     } catch (err) {
         statusText.innerText = "Erro ao carregar PDF: " + err.message;
     }
 });
 
-// 2. Renderização
+// 2. Renderização visual
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: data });
     const pdf = await loadingTask.promise;
@@ -42,48 +43,58 @@ async function renderPDF(data) {
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-// 3. Marcação de posição
+// 3. Captura do clique
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
 
     const rect = canvas.getBoundingClientRect();
-    clickX = e.clientX - rect.left;
-    clickY = e.clientY - rect.top;
+    // Forçamos o valor a ser Number para evitar NaN
+    clickX = Number(e.clientX - rect.left);
+    clickY = Number(e.clientY - rect.top);
 
-    // Redesenha para limpar marcações anteriores
+    // Redesenha para mostrar o feedback visual
     renderPDF(pdfBytes).then(() => {
         ctx.fillStyle = "rgba(37, 99, 235, 0.4)";
         ctx.strokeStyle = "#2563eb";
         ctx.lineWidth = 2;
-        ctx.fillRect(clickX, clickY, 100, 100); // Tamanho ajustado para 100px
-        ctx.strokeRect(clickX, clickY, 100, 100);
+        ctx.fillRect(clickX, clickY, boxSize, boxSize);
+        ctx.strokeRect(clickX, clickY, boxSize, boxSize);
         
-        statusText.innerText = "Posição definida! Pronto para baixar.";
+        statusText.innerText = "Posição marcada! Agora você pode baixar.";
         downloadBtn.disabled = false;
     });
 });
 
-// 4. Geração do PDF (Corrigido)
+// 4. Geração do PDF - CORREÇÃO DO ERRO NaN
 downloadBtn.addEventListener('click', async () => {
     try {
         downloadBtn.disabled = true;
-        statusText.innerText = "Processando... aguarde.";
+        statusText.innerText = "Processando PDF...";
 
-        // USANDO PDFLib da forma correta
         const { PDFDocument, rgb } = PDFLib; 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPages()[0];
-        const { height } = page.getSize();
+        
+        // Pegamos o tamanho real da página do PDF (em pontos)
+        const { width: pageW, height: pageH } = page.getSize();
 
-        // Criar o campo de botão (Placeholder de imagem)
-        const nameId = `img_field_${Math.floor(Math.random() * 1000)}`;
+        // Gerar um ID de campo único e limpo
+        const nameId = `img_${Math.floor(Math.random() * 10000).toString()}`;
         const buttonField = form.createButton(nameId);
 
-        // Ajuste de coordenadas (PDF usa origem no canto inferior esquerdo)
-        const finalX = clickX / pdfScale;
-        const finalY = (canvas.height - clickY - 100) / pdfScale; 
-        const finalSize = 100 / pdfScale;
+        /* CÁLCULO DAS COORDENADAS:
+           1. Dividimos os pixels do clique pela escala (pdfScale) para voltar ao tamanho original.
+           2. O PDF conta o Y de baixo para cima, então subtraímos do total da página.
+        */
+        const finalX = Number(clickX / pdfScale);
+        const finalY = Number(pageH - ((clickY + boxSize) / pdfScale));
+        const finalSize = Number(boxSize / pdfScale);
+
+        // Verificação de segurança: se algum valor for NaN, interrompemos aqui com aviso
+        if (isNaN(finalX) || isNaN(finalY) || isNaN(finalSize)) {
+            throw new Error("Erro no cálculo das coordenadas. Tente clicar novamente.");
+        }
 
         buttonField.addToPage(page, {
             x: finalX,
@@ -95,8 +106,9 @@ downloadBtn.addEventListener('click', async () => {
             borderWidth: 1,
         });
 
-        // Importante: Marcar como campo que pode ser clicado para upload (em leitores compatíveis)
-        // Nota: O comportamento de "upload" depende do leitor de PDF do usuário final.
+        // Opcional: define um texto de ajuda dentro do campo
+        // Isso ajuda a identificar que é um campo de imagem
+        // buttonField.setLabel('Clique p/ Imagem'); 
 
         const pdfModifiedBytes = await pdfDoc.save();
         
@@ -105,13 +117,17 @@ downloadBtn.addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_editavel_com_imagem.pdf";
+        a.download = "pdf_editavel_com_campo.pdf";
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        
+        // Limpeza
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
 
-        statusText.innerText = "Sucesso! Verifique seus downloads.";
+        statusText.innerText = "Pronto! PDF baixado com sucesso.";
         downloadBtn.disabled = false;
 
     } catch (err) {
