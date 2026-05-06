@@ -30,18 +30,23 @@ uploadInput.addEventListener('change', async (e) => {
     }
 });
 
+// 3. Renderização Visual no Canvas
 async function renderPDF(data) {
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
     const pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
+
     const viewport = page.getViewport({ scale: pdfScale });
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+
     await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
+// 4. Captura de clique
 canvas.addEventListener('click', (e) => {
     if (!pdfBytes) return;
+
     const rect = canvas.getBoundingClientRect();
     clickX = Math.floor(e.clientX - rect.left);
     clickY = Math.floor(e.clientY - rect.top);
@@ -52,15 +57,16 @@ canvas.addEventListener('click', (e) => {
         ctx.lineWidth = 2;
         ctx.fillRect(clickX, clickY, boxSize, boxSize);
         ctx.strokeRect(clickX, clickY, boxSize, boxSize);
-        statusText.innerText = "Posição definida! Gerando PDF interativo...";
+        
+        statusText.innerText = "Posição definida! Baixe e abra no Chrome/Edge.";
         downloadBtn.disabled = false;
     });
 });
 
-// 5. Geração do PDF - ESTRATÉGIA DE COMPATIBILIDADE NAVEGADOR
+// 5. Geração do PDF - Técnica de Compatibilidade Universal
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Criando campo inteligente...";
+        statusText.innerText = "Criando campo compatível...";
         downloadBtn.disabled = true;
 
         const { PDFDocument, rgb, PDFName } = PDFLib; 
@@ -75,9 +81,10 @@ downloadBtn.addEventListener('click', async () => {
 
         const fieldName = `img_field_${Math.floor(Math.random() * 10000)}`;
         
-        // Criamos um botão, mas com propriedades de exibição de ícone forçadas
+        // Criamos um botão, mas com flags de comportamento de campo de imagem
         const buttonField = form.createButton(fieldName);
-        buttonField.addToPage('Clique/Cole o Link', page, {
+
+        buttonField.addToPage('Clique para Imagem', page, {
             x: finalX,
             y: finalY,
             width: finalSize,
@@ -87,50 +94,44 @@ downloadBtn.addEventListener('click', async () => {
             borderWidth: 1,
         });
 
+        // O SEGREDO PARA APARECER NO CHROME:
+        // Forçamos o campo a ser tratado como um "Pushbutton" com aparência de ícone
         buttonField.acroField.getWidgets().forEach((widget) => {
-            // Configura o dicionário MK (Appearance Characteristics)
-            // TP 1 = Icon Only (Faz a imagem ocupar o espaço todo)
+            const dict = widget.dict;
+            
+            // Define aparência: Ícone centralizado e escalado (/TP 1)
             const MK = pdfDoc.context.obj({
                 TP: 1, 
-                CA: '' 
+                IF: { SW: 'A', S: 'A', FB: true } // Escala automática para preencher o box
             });
-            widget.dict.set(PDFName.of('MK'), MK);
+            dict.set(PDFName.of('MK'), MK);
 
-            // Adicionamos um script que tenta detectar o visualizador
-            // Se for Adobe, abre o seletor. Se for Navegador, ele habilita a colagem.
-            widget.dict.set(
+            // Script de compatibilidade: Tenta disparar o seletor nativo do navegador
+            dict.set(
                 PDFName.of('AA'), 
                 pdfDoc.context.obj({
                     D: {
                         S: 'JavaScript',
-                        JS: `
-                            try {
-                                event.target.buttonImportIcon();
-                            } catch (e) {
-                                var url = app.response("Insira o link da imagem:");
-                                if (url) {
-                                    event.target.buttonImportIcon(url);
-                                }
-                            }
-                        `
+                        JS: 'if(event.target.buttonImportIcon == undefined) { app.alert("Clique no ícone de imagem na barra do navegador ou use o Adobe."); } else { event.target.buttonImportIcon(); }'
                     }
                 })
             );
         });
 
         const pdfModifiedBytes = await pdfDoc.save();
+        
         const blob = new Blob([pdfModifiedBytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_interativo.pdf";
+        a.download = "pdf_navegador_compativel.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusText.innerText = "Baixado! Se o navegador bloquear o clique, use o Adobe.";
+            statusText.innerText = "Sucesso! Se o Chrome bloquear o clique, use o botão 'Adicionar Imagem' do próprio navegador.";
             downloadBtn.disabled = false;
         }, 100);
 
