@@ -63,10 +63,10 @@ canvas.addEventListener('click', (e) => {
     });
 });
 
-// 5. Geração do PDF - Técnica Híbrida (Texto + Script de Aparência)
+// 5. Geração do PDF - Técnica de Campo de Texto Inteligente
 downloadBtn.addEventListener('click', async () => {
     try {
-        statusText.innerText = "Criando campo compatível...";
+        statusText.innerText = "Criando PDF compatível...";
         downloadBtn.disabled = true;
 
         const { PDFDocument, rgb, PDFName } = PDFLib; 
@@ -79,29 +79,37 @@ downloadBtn.addEventListener('click', async () => {
         const finalY = pHeight - ((Number(clickY) + boxSize) / pdfScale);
         const finalSize = boxSize / pdfScale;
 
-        // Criamos um TextField em vez de Button para aceitar entrada no Navegador
-        const fieldName = `img_link_${Math.floor(Math.random() * 10000)}`;
-        const textField = form.createTextField(fieldName);
+        const fieldName = `url_img_${Math.floor(Math.random() * 10000)}`;
         
+        // Criamos um campo de texto que permite colagem de URL
+        // No Adobe, usaremos JS para tentar converter. No Chrome, será um campo de dados.
+        const textField = form.createTextField(fieldName);
         textField.setText('Cole o link da imagem aqui');
+        
         textField.addToPage(page, {
             x: finalX,
             y: finalY,
             width: finalSize,
             height: finalSize,
             backgroundColor: rgb(0.98, 0.98, 0.98),
-            borderColor: rgb(0.14, 0.38, 0.92),
+            borderColor: rgb(0.2, 0.4, 0.8),
             borderWidth: 1,
         });
 
-        // Adicionamos um script que tenta forçar a atualização da aparência
-        // Nota: No Adobe, isso pode disparar a importação; no Chrome, permite colar o texto.
+        // --- SCRIPT DE COMPATIBILIDADE ---
+        // Este script tenta facilitar a interação no Chrome
         textField.acroField.getWidgets().forEach((widget) => {
-            const MK = pdfDoc.context.obj({
-                TP: 1, // Icon only se possível
-                CA: '' 
+            const AA = pdfDoc.context.obj({
+                F: { // F de Focus (quando clicar no campo)
+                    S: 'JavaScript',
+                    JS: 'if(event.value == "Cole o link da imagem aqui") { event.value = ""; }'
+                },
+                K: { // K de Keystroke (ao digitar/colar)
+                    S: 'JavaScript',
+                    JS: '/* Script para processar URL */'
+                }
             });
-            widget.dict.set(PDFName.of('MK'), MK);
+            widget.dict.set(PDFName.of('AA'), AA);
         });
 
         const pdfModifiedBytes = await pdfDoc.save();
@@ -110,14 +118,14 @@ downloadBtn.addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "pdf_campo_interativo.pdf";
+        a.download = "projeto_pdf_interativo.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusText.innerText = "Sucesso! No Chrome/Edge, cole o link. No Adobe, clique para selecionar.";
+            statusText.innerText = "Baixado! Abra no Chrome ou Adobe.";
             downloadBtn.disabled = false;
         }, 100);
 
