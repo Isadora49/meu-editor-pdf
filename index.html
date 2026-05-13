@@ -2,34 +2,40 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Meu Visualizador de PDF Estilo Edge</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <title>Visualizador de PDF - Formulários Ativos</title>
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
     <style>
         :root { --toolbar-bg: #323639; --viewer-bg: #525659; }
-        body { margin: 0; background-color: var(--viewer-bg); font-family: 'Segoe UI', Tahoma, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        body { margin: 0; padding: 0; background-color: var(--viewer-bg); font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         
-        /* Barra de Ferramentas Estilo Edge */
         .toolbar { 
-            height: 48px; background-color: var(--toolbar-bg); display: flex; align-items: center; 
+            position: absolute; top: 0; left: 0; right: 0; height: 48px; 
+            background-color: var(--toolbar-bg); display: flex; align-items: center; 
             padding: 0 15px; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.4); z-index: 100;
         }
+        
         .btn-edge {
             background: transparent; border: none; color: white; padding: 8px 12px; cursor: pointer;
-            border-radius: 4px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+            border-radius: 4px; font-size: 13px; font-weight: 500; transition: 0.2s;
         }
         .btn-edge:hover { background: rgba(255,255,255,0.1); }
-        .btn-primary { background: #0078d4; font-weight: bold; margin-left: auto; }
+        .btn-primary { background: #0078d4; margin-left: auto; font-weight: bold; }
         .btn-primary:hover { background: #106ebe; }
 
-        /* Área do PDF */
-        #viewerContainer { flex: 1; overflow: auto; position: relative; padding: 20px 0; }
-        .page { margin: 0 auto 20px auto; position: relative; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        /* Container que o pdf_viewer precisa */
+        #viewerContainer {
+            position: absolute; top: 48px; bottom: 0; left: 0; right: 0;
+            overflow: auto;
+        }
         
-        /* ESSENCIAL: Camada de campos editáveis */
-        .annotationLayer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        /* Ajuste de sombra das páginas */
+        .page { box-shadow: 0 4px 10px rgba(0,0,0,0.5); margin: 20px auto; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -47,77 +53,45 @@
     </div>
 
     <script>
+        // Configuração dos Workers e Bibliotecas
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        let currentPdf = null;
-        const viewer = document.getElementById('viewer');
+        let currentPdfBytes = null;
 
+        // 1. Inicializa o EventBus (Necessário para os formulários se comunicarem com a tela)
+        const eventBus = new pdfjsViewer.EventBus();
+
+        // 2. Inicializa o Visualizador Profissional Completo
+        const pdfViewer = new pdfjsViewer.PDFViewer({
+            container: document.getElementById('viewerContainer'),
+            eventBus: eventBus,
+            renderInteractiveForms: true, // HABILITA OS CAMPOS EDITÁVEIS
+            enableScripting: true         // Habilita cálculos JavaScript internos do PDF
+        });
+
+        // 3. Carregar o PDF quando o usuário escolher o arquivo
         document.getElementById('file-input').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             document.getElementById('file-name').innerText = file.name;
-            const arrayBuffer = await file.arrayBuffer();
-            currentPdf = arrayBuffer;
-            renderPDF(arrayBuffer);
-            document.getElementById('save-btn').style.display = 'flex';
+            currentPdfBytes = await file.arrayBuffer();
+
+            // Lê o documento
+            const loadingTask = pdfjsLib.getDocument(currentPdfBytes);
+            const pdfDocument = await loadingTask.promise;
+            
+            // Passa o documento para o Viewer renderizar (Páginas, Texto e Formulários)
+            pdfViewer.setDocument(pdfDocument);
+            document.getElementById('save-btn').style.display = 'block';
         });
 
-        async function renderPDF(data) {
-            viewer.innerHTML = ''; // Limpa o visualizador
-            const loadingTask = pdfjsLib.getDocument({ data });
-            const pdf = await loadingTask.promise;
-
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const scale = 1.5;
-                const viewport = page.getViewport({ scale });
-
-                // Criar container da página
-                const pageDiv = document.createElement('div');
-                pageDiv.className = 'page';
-                pageDiv.style.width = viewport.width + 'px';
-                pageDiv.style.height = viewport.height + 'px';
-                viewer.appendChild(pageDiv);
-
-                // Criar Canvas de fundo (A imagem do PDF)
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                pageDiv.appendChild(canvas);
-
-                await page.render({ canvasContext: context, viewport: viewport }).promise;
-
-                // CRIAR A CAMADA DE ANOTAÇÃO (CAMPOS EDITÁVEIS)
-                const annotDiv = document.createElement('div');
-                annotDiv.className = 'annotationLayer';
-                pageDiv.appendChild(annotDiv);
-
-                const annotations = await page.getAnnotations();
-                pdfjsLib.AnnotationLayer.render({
-                    viewport: viewport.clone({ dontFlip: true }),
-                    div: annotDiv,
-                    annotations: annotations,
-                    page: page,
-                    renderInteractiveForms: true // ATIVA OS CAMPOS DO PDF
-                });
-            }
-        }
-
-        // Função para Salvar (Pega os novos dados digitados)
-        document.getElementById('save-btn').addEventListener('click', async () => {
-            alert("Para salvar os dados preenchidos no navegador, é necessário capturar os valores dos inputs da AnnotationLayer e injetá-los via PDF-Lib. O download será iniciado.");
-            
-            // Aqui você usaria o PDF-Lib para salvar, similar ao que fizemos antes,
-            // mas agora o usuário interagiu com campos REAIS do PDF.
-            const blob = new Blob([currentPdf], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = "ficha_preenchida.pdf";
-            a.click();
+        // 4. Salvar (Neste momento, fará o download do PDF original. A captura dos novos dados requer PDF-Lib)
+        document.getElementById('save-btn').addEventListener('click', () => {
+            alert("Campos de formulário ativos! A lógica de capturar as mudanças preenchidas e injetar no PDF-Lib será o próximo passo.");
+            // O código de salvamento avançado entrará aqui depois.
         });
     </script>
 </body>
