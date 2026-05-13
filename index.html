@@ -1,147 +1,147 @@
-import google.ds_python_interpreter as ide
-
-code = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de PDF Portátil</title>
+    <title>Visualizador de PDF Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
-        :root { --primary: #2563eb; --success: #16a34a; --bg: #0f172a; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .controls { background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.5); text-align: center; width: 100%; max-width: 800px; margin-bottom: 20px; border: 1px solid #334155; }
-        .button-group { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 15px; }
-        .btn { padding: 10px 18px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; background: var(--primary); color: white; text-decoration: none; }
-        .btn-img { background: #8b5cf6; }
-        .btn-save { background: var(--success); }
-        .btn:disabled { background: #475569; cursor: not-allowed; }
-        #status { margin-top: 15px; font-size: 0.9rem; color: #94a3b8; }
-        .canvas-container { border: 2px solid #334155; border-radius: 8px; overflow: auto; background: #334155; padding: 10px; cursor: crosshair; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
-        canvas { background: white; display: block; }
-        .step { display: inline-block; background: #334155; padding: 2px 8px; border-radius: 4px; margin-right: 5px; color: #38bdf8; }
+        /* Estilo para parecer o visualizador nativo do Chrome */
+        body { margin: 0; background-color: #525659; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        
+        .toolbar { 
+            height: 56px; background-color: #323639; display: flex; align-items: center; 
+            padding: 0 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 10;
+        }
+
+        .toolbar h1 { color: white; font-size: 14px; flex-grow: 1; font-weight: normal; }
+
+        .btn-tool {
+            background: none; border: none; color: white; padding: 8px 15px; cursor: pointer;
+            border-radius: 4px; transition: background 0.2s; font-size: 13px; margin-left: 10px;
+            display: flex; align-items: center; gap: 5px;
+        }
+
+        .btn-tool:hover { background-color: rgba(255,255,255,0.1); }
+        .btn-tool.primary { background-color: #8ab4f8; color: #202124; font-weight: bold; }
+
+        .viewer-container { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
+        
+        #pdf-render-area { background-color: white; box-shadow: 0 0 15px rgba(0,0,0,0.5); position: relative; cursor: crosshair; }
+        
+        canvas { display: block; }
+
+        /* Esconder inputs reais */
+        input[type="file"] { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <h2><span class="step">1</span> Editor de PDF Portátil</h2>
-        <p>Use esta ferramenta para fixar imagens em seus PDFs localmente.</p>
+    <div class="toolbar">
+        <h1>Editor de PDF - Interface Nativa</h1>
         
-        <div class="button-group">
-            <input type="file" id="uploadPdf" accept="application/pdf" hidden>
-            <label for="uploadPdf" class="btn">📂 Abrir PDF</label>
-
-            <input type="file" id="uploadImage" accept="image/png, image/jpeg" hidden disabled>
-            <label id="labelImage" for="uploadImage" class="btn btn-img" style="opacity: 0.5;">🖼️ Escolher Imagem</label>
-
-            <button id="downloadBtn" class="btn btn-save" disabled>💾 Salvar PDF Final</button>
-        </div>
+        <input type="file" id="load-pdf" accept="application/pdf">
+        <button class="btn-tool" onclick="document.getElementById('load-pdf').click()">📂 Abrir Arquivo</button>
         
-        <p id="status">Aguardando PDF...</p>
+        <input type="file" id="load-img" accept="image/*">
+        <button id="btn-img" class="btn-tool" onclick="document.getElementById('load-img').click()" style="display:none">🖼️ Selecionar Imagem</button>
+        
+        <button id="btn-save" class="btn-tool primary" style="display:none">📥 Baixar PDF Editado</button>
     </div>
 
-    <div class="canvas-container" id="container">
-        <canvas id="pdfCanvas"></canvas>
+    <div class="viewer-container">
+        <div id="pdf-render-area">
+            <canvas id="main-canvas"></canvas>
+        </div>
     </div>
 
     <script>
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        let pdfBytes = null;
-        let imageBytes = null;
-        let imageType = '';
-        let clickX = 0, clickY = 0;
-        const pdfScale = 1.5;
-        const boxSize = 100;
+        let originalPdfBytes = null;
+        let selectedImgBytes = null;
+        let imgType = '';
+        let posX = 0, posY = 0;
+        const scale = 1.5;
 
-        const uploadPdf = document.getElementById('uploadPdf');
-        const uploadImage = document.getElementById('uploadImage');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const statusText = document.getElementById('status');
-        const canvas = document.getElementById('pdfCanvas');
-        const ctx = canvas.getContext('2d');
-
-        // Carregar PDF
-        uploadPdf.addEventListener('change', async (e) => {
+        // 1. Abrir o PDF
+        document.getElementById('load-pdf').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            pdfBytes = await file.arrayBuffer();
-            renderPDF(pdfBytes);
-            uploadImage.disabled = false;
-            document.getElementById('labelImage').style.opacity = "1";
-            statusText.innerHTML = "<span class='step'>2</span> PDF carregado. Agora selecione a <b>Imagem</b>.";
+            originalPdfBytes = await file.arrayBuffer();
+            renderPreview();
+            document.getElementById('btn-img').style.display = 'flex';
         });
 
-        // Carregar Imagem
-        uploadImage.addEventListener('change', async (e) => {
+        // 2. Selecionar Imagem
+        document.getElementById('load-img').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            imageType = file.type;
-            imageBytes = await file.arrayBuffer();
-            statusText.innerHTML = "<span class='step'>3</span> Imagem pronta. <b>Clique no local do PDF</b> para posicionar.";
+            imgType = file.type;
+            selectedImgBytes = await file.arrayBuffer();
+            alert("Imagem carregada! Agora clique em qualquer lugar do PDF para posicioná-la.");
         });
 
-        async function renderPDF(data) {
-            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) });
+        async function renderPreview() {
+            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(originalPdfBytes) });
             const pdf = await loadingTask.promise;
             const page = await pdf.getPage(1);
-            const viewport = page.getViewport({ scale: pdfScale });
-            canvas.width = viewport.width;
+            const viewport = page.getViewport({ scale: scale });
+            
+            const canvas = document.getElementById('main-canvas');
+            const context = canvas.getContext('2d');
             canvas.height = viewport.height;
-            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            canvas.width = viewport.width;
+
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
         }
 
-        // Clique para posicionar e visualizar
-        canvas.addEventListener('click', (e) => {
-            if (!imageBytes) { alert("Selecione a imagem primeiro!"); return; }
-            const rect = canvas.getBoundingClientRect();
-            clickX = e.clientX - rect.left;
-            clickY = e.clientY - rect.top;
+        // 3. Clique para Posicionar
+        document.getElementById('pdf-render-area').addEventListener('click', (e) => {
+            if (!selectedImgBytes) return;
 
-            renderPDF(pdfBytes).then(() => {
-                ctx.strokeStyle = "#8b5cf6";
-                ctx.lineWidth = 3;
-                ctx.strokeRect(clickX, clickY, boxSize, boxSize);
-                ctx.fillStyle = "rgba(139, 92, 246, 0.3)";
-                ctx.fillRect(clickX, clickY, boxSize, boxSize);
+            const rect = e.currentTarget.getBoundingClientRect();
+            posX = e.clientX - rect.left;
+            posY = e.clientY - rect.top;
+
+            // Desenha um feedback visual (retângulo)
+            renderPreview().then(() => {
+                const ctx = document.getElementById('main-canvas').getContext('2d');
+                ctx.strokeStyle = '#4285f4';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(posX, posY, 100, 100);
+                ctx.fillStyle = 'rgba(66, 133, 244, 0.2)';
+                ctx.fillRect(posX, posY, 100, 100);
                 
-                statusText.innerHTML = "<span class='step'>4</span> Posição definida! Clique em <b>Salvar PDF Final</b>.";
-                downloadBtn.disabled = false;
+                document.getElementById('btn-save').style.display = 'flex';
             });
         });
 
-        // Gerar o PDF real com a imagem embutida
-        downloadBtn.addEventListener('click', async () => {
-            statusText.innerText = "Processando arquivo...";
+        // 4. Salvar PDF (Carimbar a imagem permanentemente)
+        document.getElementById('btn-save').addEventListener('click', async () => {
             const { PDFDocument } = PDFLib;
-            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const pdfDoc = await PDFDocument.load(originalPdfBytes);
             const page = pdfDoc.getPages()[0];
-            const { height: pHeight } = page.getSize();
+            const { height } = page.getSize();
 
-            const finalX = clickX / pdfScale;
-            const finalY = pHeight - ((clickY + boxSize) / pdfScale);
-            const finalSize = boxSize / pdfScale;
+            const img = (imgType === 'image/png') ? await pdfDoc.embedPng(selectedImgBytes) : await pdfDoc.embedJpg(selectedImgBytes);
 
-            let img;
-            if (imageType === 'image/png') img = await pdfDoc.embedPng(imageBytes);
-            else img = await pdfDoc.embedJpg(imageBytes);
+            // Traduz coordenadas do canvas para coordenadas do PDF (Y é invertido no PDF)
+            page.drawImage(img, {
+                x: posX / scale,
+                y: height - ((posY + 100) / scale),
+                width: 100 / scale,
+                height: 100 / scale,
+            });
 
-            page.drawImage(img, { x: finalX, y: finalY, width: finalSize, height: finalSize });
-
-            const resultBytes = await pdfDoc.save();
-            const blob = new Blob([resultBytes], { type: "application/pdf" });
+            const savedBytes = await pdfDoc.save();
+            const blob = new Blob([savedBytes], { type: "application/pdf" });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = "pdf_editado.pdf";
+            link.download = "documento_editado.pdf";
             link.click();
-            statusText.innerText = "Concluído! PDF baixado.";
         });
     </script>
 </body>
 </html>
-"""
-ide.execute(code=f"with open('index.html', 'w') as f: f.write('''{code}''')")
