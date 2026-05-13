@@ -2,173 +2,127 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>PDF Form Viewer - Estilo Edge</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <title>Meu Visualizador PDF Estilo Edge</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+    
     <style>
-        :root { --bg-viewer: #525659; --toolbar: #323639; --field-blue: rgba(0, 102, 255, 0.1); }
-        body { margin: 0; background: var(--bg-viewer); font-family: 'Segoe UI', sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        
-        /* Toolbar estilo Edge */
-        .toolbar { height: 48px; background: var(--toolbar); display: flex; align-items: center; padding: 0 20px; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); z-index: 100; }
-        .toolbar h1 { font-size: 14px; font-weight: 400; flex-grow: 1; margin: 0; }
-        .btn-edge { background: transparent; border: none; color: white; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-size: 13px; transition: 0.2s; }
-        .btn-edge:hover { background: rgba(255,255,255,0.1); }
+        :root { --edge-bg: #323639; --edge-toolbar: #2b2e31; }
+        body { margin: 0; background-color: var(--edge-bg); font-family: 'Segoe UI', Tahoma, sans-serif; }
+
+        /* Barra Superior estilo Microsoft Edge */
+        .toolbar {
+            height: 48px; background-color: var(--edge-toolbar);
+            display: flex; align-items: center; padding: 0 20px;
+            color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            position: sticky; top: 0; z-index: 100;
+        }
+
+        .toolbar-title { font-size: 14px; flex-grow: 1; opacity: 0.9; }
+
+        .btn {
+            background: transparent; border: none; color: white;
+            padding: 8px 12px; cursor: pointer; border-radius: 4px;
+            font-size: 13px; margin-left: 5px;
+        }
+        .btn:hover { background: rgba(255,255,255,0.1); }
         .btn-primary { background: #0078d4; }
-        .btn-primary:hover { background: #106ebe; }
+        .btn-primary:hover { background: #005a9e; }
 
         /* Área do PDF */
-        .viewport { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 40px 0; position: relative; }
-        #pdf-wrapper { position: relative; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.4); }
-        canvas { display: block; }
+        #viewerContainer {
+            width: 100%; height: calc(100vh - 48px);
+            overflow: auto; display: flex; justify-content: center;
+            padding: 20px 0;
+        }
 
-        /* Camada de Campos Editáveis */
-        .annotation-layer { position: absolute; top: 0; left: 0; pointer-events: none; }
-        .form-field { 
-            position: absolute; pointer-events: auto; 
-            border: 1px solid transparent; background: var(--field-blue); 
-            box-sizing: border-box; transition: 0.2s;
+        /* Isso é o que permite os campos editáveis aparecerem */
+        .pdfViewer .page { margin-bottom: 20px; position: relative; border: none !important; }
+        .annotationLayer input, .annotationLayer textarea, .annotationLayer select {
+            background-color: rgba(0, 100, 255, 0.1) !important; /* Cor azulada dos campos */
+            border: 1px solid transparent !important;
         }
-        .form-field:hover { background: rgba(0, 102, 255, 0.2); border: 1px solid #0066ff; }
-        .form-field input, .form-field textarea { 
-            width: 100%; height: 100%; border: none; background: transparent; 
-            font-size: inherit; padding: 2px; outline: none;
-        }
+        .annotationLayer input:focus { background-color: white !important; border: 1px solid #0078d4 !important; }
     </style>
 </head>
 <body>
 
     <div class="toolbar">
-        <h1>Visualizador de Fichas Editáveis</h1>
-        <input type="file" id="file-input" accept="application/pdf" hidden>
-        <button class="btn-edge" onclick="document.getElementById('file-input').click()">Abrir Arquivo</button>
-        <button id="save-btn" class="btn-edge btn-primary" style="display:none">Salvar e Baixar</button>
+        <div class="toolbar-title" id="docName">Visualizador PDF Interativo</div>
+        <input type="file" id="fileInput" accept="application/pdf" hidden>
+        <button class="btn" onclick="document.getElementById('fileInput').click()">Abrir Arquivo</button>
+        <button class="btn btn-primary" id="saveBtn">Salvar Alterações</button>
     </div>
 
-    <div class="viewport">
-        <div id="pdf-wrapper">
-            <canvas id="pdf-canvas"></canvas>
-            <div id="annotation-layer" class="annotation-layer"></div>
-        </div>
+    <div id="viewerContainer">
+        <div id="viewer" class="pdfViewer"></div>
     </div>
 
     <script>
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        let pdfDoc = null;
-        let pdfBytes = null;
-        let scale = 1.5; // Ajuste de zoom
+        let currentPdf = null;
 
-        document.getElementById('file-input').addEventListener('change', async (e) => {
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            pdfBytes = await file.arrayBuffer();
-            loadPDF(pdfBytes);
+            document.getElementById('docName').innerText = file.name;
+
+            const arrayBuffer = await file.arrayBuffer();
+            loadPDF(arrayBuffer);
         });
 
-        async function loadPDF(bytes) {
-            // Limpa visualização anterior
-            document.getElementById('annotation-layer').innerHTML = '';
-            
-            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes) });
-            const pdf = await loadingTask.promise;
-            const page = await pdf.getPage(1);
-            
-            const viewport = page.getViewport({ scale });
-            const canvas = document.getElementById('pdf-canvas');
-            const wrapper = document.getElementById('pdf-wrapper');
-            
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            wrapper.style.width = viewport.width + 'px';
-            wrapper.style.height = viewport.height + 'px';
+        async function loadPDF(data) {
+            const container = document.getElementById('viewerContainer');
+            const viewer = document.getElementById('viewer');
+            viewer.innerHTML = ''; // Limpa o anterior
 
-            const renderContext = { canvasContext: canvas.getContext('2d'), viewport: viewport };
-            await page.render(renderContext).promise;
+            const loadingTask = pdfjsLib.getDocument({ data: data });
+            currentPdf = await loadingTask.promise;
 
-            // Agora vamos reconhecer os campos editáveis usando PDF-LIB
-            const fullPdf = await PDFLib.PDFDocument.load(bytes);
-            const form = fullPdf.getForm();
-            const fields = form.getFields();
+            for (let i = 1; i <= currentPdf.numPages; i++) {
+                const page = await currentPdf.getPage(i);
+                const scale = 1.5;
+                const viewport = page.getViewport({ scale });
 
-            fields.forEach(field => {
-                const name = field.getName();
-                const widgets = field.acroField.getWidgets();
-                
-                widgets.forEach(widget => {
-                    const rect = widget.getRectangle();
-                    createHTMLField(name, rect, viewport.height, field.constructor.name);
+                // Cria o elemento da página
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page';
+                pageDiv.style.width = `${viewport.width}px`;
+                pageDiv.style.height = `${viewport.height}px`;
+                viewer.appendChild(pageDiv);
+
+                // 1. Renderiza o fundo (Canvas)
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                pageDiv.appendChild(canvas);
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                // 2. Renderiza a Camada de Campos Editáveis (Annotation Layer)
+                const annotationLayerDiv = document.createElement('div');
+                annotationLayerDiv.className = 'annotationLayer';
+                pageDiv.appendChild(annotationLayerDiv);
+
+                const annotations = await page.getAnnotations();
+                pdfjsLib.AnnotationLayer.render({
+                    viewport: viewport.clone({ dontFlip: true }),
+                    div: annotationLayerDiv,
+                    annotations: annotations,
+                    page: page,
+                    renderInteractiveForms: true // ESSA É A CHAVE PARA OS CAMPOS FUNCIONAREM
                 });
-            });
-
-            document.getElementById('save-btn').style.display = 'block';
-        }
-
-        function createHTMLField(name, rect, pageHeight, type) {
-            const container = document.getElementById('annotation-layer');
-            const div = document.createElement('div');
-            div.className = 'form-field';
-            
-            // Converte coordenadas do PDF para Pixels da tela
-            div.style.left = (rect.x * scale) + 'px';
-            div.style.top = (pageHeight - (rect.y + rect.height) * scale) + 'px';
-            div.style.width = (rect.width * scale) + 'px';
-            div.style.height = (rect.height * scale) + 'px';
-
-            if (type === 'PDFButton') {
-                // Se for um botão (campo de imagem), cria um seletor
-                div.innerHTML = `<button title="Clique para Imagem" style="width:100%; height:100%; opacity:0; cursor:pointer" onclick="triggerImageUpload('${name}')"></button>`;
-            } else {
-                // Se for texto, cria um input real
-                div.innerHTML = `<input type="text" id="field-${name}" data-name="${name}">`;
             }
-
-            container.appendChild(div);
         }
 
-        async function triggerImageUpload(fieldName) {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const imgBytes = await file.arrayBuffer();
-                alert(`Imagem para o campo "${fieldName}" carregada! Clique em Salvar para aplicar.`);
-                window.lastImage = { fieldName, imgBytes, type: file.type };
-            };
-            input.click();
-        }
-
-        document.getElementById('save-btn').addEventListener('click', async () => {
-            const fullPdf = await PDFLib.PDFDocument.load(pdfBytes);
-            const form = fullPdf.getForm();
-
-            // Pega todos os valores digitados nos campos de texto
-            const inputs = document.querySelectorAll('.form-field input');
-            inputs.forEach(input => {
-                const name = input.getAttribute('data-name');
-                const field = form.getTextField(name);
-                field.setText(input.value);
-            });
-
-            // Insere a imagem se houver uma selecionada
-            if (window.lastImage) {
-                const button = form.getButton(window.lastImage.fieldName);
-                const img = (window.lastImage.type === 'image/png') 
-                    ? await fullPdf.embedPng(window.lastImage.imgBytes) 
-                    : await fullPdf.embedJpg(window.lastImage.imgBytes);
-                button.setImage(img);
-            }
-
-            const result = await fullPdf.save();
-            const blob = new Blob([result], { type: "application/pdf" });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = "ficha_preenchida.pdf";
-            link.click();
+        // Função para salvar (Como o navegador faz)
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            alert("Em um visualizador web, para salvar os dados preenchidos, você precisaria de um script extra para coletar os valores dos inputs da 'annotationLayer'.");
         });
     </script>
+
 </body>
 </html>
