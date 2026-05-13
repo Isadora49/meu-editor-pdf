@@ -2,141 +2,110 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizador Pro - Cálculos e Imagem Ativos</title>
+    <title>Editor de Ficha Pro</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     
     <style>
-        :root { --toolbar-bg: #2b2b2b; }
-        body { margin: 0; background-color: #525659; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
-        .toolbar { 
-            height: 50px; background: var(--toolbar-bg); display: flex; 
-            align-items: center; padding: 0 20px; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            z-index: 100; position: relative;
-        }
-        #viewerContainer { position: absolute; top: 50px; bottom: 0; left: 0; right: 0; overflow: auto; }
-        .pdfViewer .page { margin: 15px auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); border: none; }
-        
-        .btn-action {
-            background: #0078d4; color: white; border: none; padding: 8px 16px; 
-            border-radius: 4px; cursor: pointer; font-weight: 500; margin-right: 10px;
-        }
-        .btn-action:hover { background: #106ebe; }
-        #status { font-size: 13px; color: #ccc; }
+        body { margin: 0; background-color: #525659; font-family: sans-serif; overflow: hidden; }
+        .toolbar { height: 48px; background: #323639; display: flex; align-items: center; padding: 0 20px; color: white; z-index: 100; position: relative; }
+        #viewerContainer { position: absolute; top: 48px; bottom: 0; left: 0; right: 0; overflow: auto; }
+        .pdfViewer .page { margin: 10px auto; box-shadow: 0 0 8px rgba(0,0,0,0.5); border: none; }
+        .btn { background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        #loading-msg { font-size: 12px; color: #ffeb3b; display: none; }
     </style>
 </head>
 <body>
 
-    <div class="toolbar">
-        <input type="file" id="file-input" accept="application/pdf" style="display:none">
-        <button class="btn-action" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
-        <button class="btn-action" id="download-btn" style="display:none; background: #16a34a;">📥 Baixar PDF Final</button>
-        <span id="status">Selecione uma ficha PDF...</span>
-    </div>
+<div class="toolbar">
+    <input type="file" id="file-input" accept="application/pdf" style="display:none">
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
+    <button class="btn" id="save-btn" style="background:#16a34a">💾 Salvar</button>
+    <span id="loading-msg">Processando...</span>
+</div>
 
-    <input type="file" id="img-selector" accept="image/*" style="display:none">
+<input type="file" id="img-selector" accept="image/*" style="display:none">
 
-    <div id="viewerContainer">
-        <div id="viewer" class="pdfViewer"></div>
-    </div>
+<div id="viewerContainer">
+    <div id="viewer" class="pdfViewer"></div>
+</div>
 
-    <script>
-        const { PDFDocument } = PDFLib;
-        const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
-        
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        
-        // MOTOR DE CÁLCULOS (Sandbox)
-        const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
+<script>
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        let currentPdfBytes = null;
-        const eventBus = new pdfjsViewer.EventBus();
+    // Arquivos necessários para os CÁLCULOS funcionarem
+    const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
 
-        const pdfViewer = new pdfjsViewer.PDFViewer({
-            container: document.getElementById('viewerContainer'),
-            eventBus: eventBus,
-            renderInteractiveForms: true,
-            enableScripting: true, // Habilita cálculos
-            sandboxBundleSrc: sandboxBundleSrc
+    let currentPdfBytes = null;
+    const eventBus = new pdfjsViewer.EventBus();
+
+    const pdfViewer = new pdfjsViewer.PDFViewer({
+        container: document.getElementById('viewerContainer'),
+        eventBus: eventBus,
+        renderInteractiveForms: true,
+        enableScripting: true, // ATIVA CÁLCULOS
+        sandboxBundleSrc: sandboxBundleSrc
+    });
+
+    // Monitora mudanças nos campos para forçar cálculos
+    eventBus.on('pagerendered', function () {
+        document.getElementById('loading-msg').style.display = 'none';
+    });
+
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        currentPdfBytes = await file.arrayBuffer();
+        loadPDF(currentPdfBytes);
+    });
+
+    async function loadPDF(bytes) {
+        const loadingTask = pdfjsLib.getDocument({
+            data: bytes,
+            enableJavaScript: true // ESSENCIAL PARA CÁLCULOS
         });
+        const pdfDocument = await loadingTask.promise;
+        pdfViewer.setDocument(pdfDocument);
+    }
 
-        // 1. Carregar PDF
-        document.getElementById('file-input').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+    // LÓGICA DE IMAGEM ULTRA RÁPIDA
+    document.getElementById('viewerContainer').addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
+            document.getElementById('img-selector').click();
+        }
+    });
 
-            document.getElementById('status').innerText = "Carregando motor de cálculos...";
-            currentPdfBytes = await file.arrayBuffer();
-            
-            const loadingTask = pdfjsLib.getDocument({
-                data: currentPdfBytes,
-                enableJavaScript: true // IMPORTANTE: Ativa o JS interno do PDF
-            });
-            
-            const pdfDocument = await loadingTask.promise;
-            pdfViewer.setDocument(pdfDocument);
-            document.getElementById('status').innerText = "Ficha pronta para edição.";
-            document.getElementById('download-btn').style.display = "inline-block";
-        });
+    document.getElementById('img-selector').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        // 2. Lógica de Clique no Campo de Imagem
-        // Detectamos o clique na camada de formulário
-        document.getElementById('viewerContainer').addEventListener('click', async (e) => {
-            const target = e.target;
-            // Verifica se clicou em um campo do tipo botão/imagem
-            if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
-                console.log("Campo de imagem detectado. Abrindo seletor...");
-                document.getElementById('img-selector').click();
-            }
-        });
+        document.getElementById('loading-msg').style.display = 'inline';
+        const imgBytes = await file.arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.load(currentPdfBytes);
+        const page = pdfDoc.getPages()[0];
 
-        // 3. Processar Imagem e Inserir no PDF
-        document.getElementById('img-selector').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file || !currentPdfBytes) return;
+        const img = file.type === 'image/png' ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
 
-            document.getElementById('status').innerText = "Processando imagem...";
-            
-            const imgArrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await PDFDocument.load(currentPdfBytes);
-            const page = pdfDoc.getPages()[0]; // Assume a primeira página
+        // Inserção automática (Exemplo na área da foto comum em fichas)
+        page.drawImage(img, { x: 445, y: 550, width: 110, height: 130 }); 
 
-            // Embebe a imagem (JPG ou PNG)
-            const img = file.type === 'image/png' ? 
-                        await pdfDoc.embedPng(imgArrayBuffer) : 
-                        await pdfDoc.embedJpg(imgArrayBuffer);
+        currentPdfBytes = await pdfDoc.save();
+        await loadPDF(currentPdfBytes); // Atualiza a tela
+    });
 
-            // IMPORTANTE: Aqui você define onde a imagem vai aparecer.
-            // Para ser automático, precisaríamos ler as coordenadas do campo clicado.
-            // Por enquanto, vamos "carimbar" no centro para teste ou você clica na posição.
-            // Em fichas de RPG, o campo de imagem costuma ser fixo.
-            
-            page.drawImage(img, {
-                x: 50, // Ajuste essas coordenadas conforme sua ficha
-                y: 400, 
-                width: 120,
-                height: 120,
-            });
+    document.getElementById('save-btn').addEventListener('click', () => {
+        const blob = new Blob([currentPdfBytes], { type: "application/pdf" });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = "ficha_editada.pdf";
+        link.click();
+    });
+</script>
 
-            currentPdfBytes = await pdfDoc.save();
-            
-            // Re-renderiza o PDF para mostrar a imagem na hora
-            const loadingTask = pdfjsLib.getDocument({ data: currentPdfBytes, enableJavaScript: true });
-            pdfViewer.setDocument(await loadingTask.promise);
-            document.getElementById('status').innerText = "Imagem aplicada!";
-        });
-
-        // 4. Download do PDF Editado
-        document.getElementById('download-btn').addEventListener('click', () => {
-            const blob = new Blob([currentPdfBytes], { type: "application/pdf" });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = "ficha_atualizada.pdf";
-            link.click();
-        });
-    </script>
 </body>
 </html>
