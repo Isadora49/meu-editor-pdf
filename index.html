@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
+        /* CSS IGUAL AO CÓDIGO 2 PARA GARANTIR QUE APAREÇA */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -61,7 +62,7 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // Scripting Manager configurado com fallback
+    // CONFIGURAÇÃO DO MOTOR DE CÁLCULOS (SEM TRAVAR A TELA)
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus: eventBus,
         sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
@@ -70,10 +71,11 @@
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
-        renderInteractiveForms: true, 
-        enableScripting: true 
+        renderInteractiveForms: true,
+        enableScripting: true // Ativa o suporte a scripts
     });
 
+    // Conecta o motor de cálculos ao visualizador antes de abrir o PDF
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -87,32 +89,30 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true 
+                    enableJavaScript: true // Permite que o PDF.js leia sua programação
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // Primeiro, garante a renderização do documento na tela
+                // PASSO 1: Mostra o PDF na tela primeiro (Igual ao Código 2)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // Ativa os scripts DEPOIS de renderizar para não travar a visualização
-                try {
-                    await scriptingManager.setDocument(pdfDocument);
-                } catch (scriptError) {
-                    console.warn("Aviso: Alguns cálculos podem falhar devido a restrições do navegador, mas o PDF continuará visível.");
-                }
-
+                // PASSO 2: Ativa os cálculos em segundo plano (O que faltava no Código 2)
+                scriptingManager.setDocument(pdfDocument).catch(err => {
+                    console.warn("Aviso: Alguns cálculos podem não funcionar, mas o PDF abriu.");
+                });
+                
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Cálculos Ativos.";
+                document.getElementById('msg').innerText = "PDF Aberto e Cálculos Ativos.";
             } catch (err) {
                 console.error(err);
-                alert("Erro ao abrir o PDF.");
+                alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // --- Lógica de Imagem (Mantida) ---
+    // Lógica para Campo de Imagem (Mantida igual aos dois códigos)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -124,22 +124,27 @@
     document.getElementById('img-selector').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file || !lastClickedField) return;
+
         const imgUrl = URL.createObjectURL(file);
         const imgBuffer = await file.arrayBuffer();
         const rect = lastClickedField.getBoundingClientRect();
         const pageDiv = lastClickedField.closest('.page');
+
         if (pageDiv) {
             const visualImg = document.createElement('img');
             visualImg.src = imgUrl;
             visualImg.className = 'instant-img';
             visualImg.style.width = rect.width + 'px';
             visualImg.style.height = rect.height + 'px';
+            
             const pageRect = pageDiv.getBoundingClientRect();
             visualImg.style.left = (rect.left - pageRect.left) + 'px';
             visualImg.style.top = (rect.top - pageRect.top) + 'px';
             pageDiv.appendChild(visualImg);
+
             imagesToProcess.push({
-                buffer: imgBuffer, type: file.type,
+                buffer: imgBuffer,
+                type: file.type,
                 widthPct: rect.width / pageDiv.clientWidth,
                 heightPct: rect.height / pageDiv.clientHeight,
                 leftPct: (rect.left - pageRect.left) / pageDiv.clientWidth,
@@ -148,12 +153,13 @@
         }
     });
 
-    // --- Lógica de Salvamento (Mantida) ---
+    // Salvar arquivo final (Mantida igual ao Código 2)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
         const page = pdfDoc.getPages()[0];
         const { width, height } = page.getSize();
+
         for (const imgData of imagesToProcess) {
             const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(imgData.buffer) : await pdfDoc.embedJpg(imgData.buffer);
             page.drawImage(img, {
@@ -163,6 +169,7 @@
                 height: imgData.heightPct * height
             });
         }
+
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
@@ -170,5 +177,6 @@
         link.click();
     });
 </script>
+
 </body>
 </html>
