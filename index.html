@@ -3,24 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <title>Editor de Ficha Ultra Rápido</title>
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     
     <style>
-        :root { --toolbar-bg: #202124; --bg: #525659; }
-        body { margin: 0; background-color: var(--bg); font-family: sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        .toolbar { height: 56px; background: var(--toolbar-bg); display: flex; align-items: center; padding: 0 20px; color: white; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-        .btn { background: #8ab4f8; color: #202124; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px; transition: 0.2s; }
+        /* CSS Blindado para garantir que o PDF sempre apareça */
+        body { margin: 0; background-color: #525659; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        
+        .toolbar { 
+            position: absolute; top: 0; left: 0; right: 0; height: 56px; 
+            background: #323639; display: flex; align-items: center; 
+            padding: 0 20px; color: white; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.5); 
+        }
+        
+        .btn { 
+            background: #8ab4f8; color: #202124; border: none; padding: 8px 16px; 
+            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px; transition: 0.2s; 
+        }
         .btn:hover { background: #aecbfa; }
         .btn-success { background: #81c995; }
         .btn-success:hover { background: #a8dab5; }
-        #viewerContainer { flex-grow: 1; overflow: auto; position: relative; }
-        .pdfViewer .page { border: none; margin: 20px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
         
-        /* A classe das imagens injetadas instantaneamente */
-        .instant-img { position: absolute; z-index: 50; object-fit: cover; border-radius: 2px; pointer-events: none; }
+        /* Container do visualizador fixado para ocupar o resto da tela */
+        #viewerContainer { 
+            position: absolute; top: 56px; bottom: 0; left: 0; right: 0; 
+            overflow: auto; 
+        }
+        
+        .pdfViewer .page { 
+            border: none; margin: 20px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); position: relative; 
+        }
+        
+        /* Imagem injetada instantaneamente */
+        .instant-img { 
+            position: absolute; z-index: 50; object-fit: cover; border-radius: 2px; pointer-events: none; 
+        }
+        
+        #status { font-size: 14px; color: #e8eaed; }
     </style>
 </head>
 <body>
@@ -29,7 +51,7 @@
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
     <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir Ficha</button>
     <button class="btn btn-success" id="save-btn" style="display:none;">💾 Salvar PDF Final</button>
-    <span id="status" style="font-size: 14px;">Pronto.</span>
+    <span id="status">Pronto para começar.</span>
 </div>
 
 <input type="file" id="img-selector" accept="image/*" style="display:none">
@@ -39,126 +61,119 @@
 </div>
 
 <script>
+    // Referências Seguras às Bibliotecas
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
-    const { PDFDocument } = PDFLib;
+    const PDFDocument = window.PDFLib.PDFDocument; // Carregamento seguro da PDF-Lib
 
-    // Configuração dos Workers e Sandbox (Essencial para Cálculos)
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
 
     let currentPdfBytes = null;
-    let imagesToProcess = []; // Fila de imagens para processar apenas no final
-    let lastClickedField = null; // Guarda onde o usuário clicou
+    let imagesToProcess = []; 
+    let lastClickedField = null; 
     
     const eventBus = new pdfjsViewer.EventBus();
 
+    // Inicialização do Visualizador (Com Cálculos Ativados)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true, // Força a ativação de cálculos AcroJS
+        enableScripting: true, 
         sandboxBundleSrc: sandboxBundleSrc
     });
 
-    // 1. CARREGAMENTO DO PDF
+    // 1. CARREGAR PDF (Com proteção de Uint8Array)
     document.getElementById('file-input').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        document.getElementById('status').innerText = "Carregando...";
-        currentPdfBytes = await file.arrayBuffer();
-        imagesToProcess = []; // Reseta a fila de imagens
-        
-        const loadingTask = pdfjsLib.getDocument({
-            data: currentPdfBytes,
-            enableJavaScript: true // Permite execução dos scripts internos do PDF
-        });
-        
-        const pdfDocument = await loadingTask.promise;
-        pdfViewer.setDocument(pdfDocument);
-        document.getElementById('save-btn').style.display = 'inline-block';
-        document.getElementById('status').innerText = "Ficha pronta. Os cálculos operam ao pressionar 'Enter' ou 'Tab' após digitar.";
+        try {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('status').innerText = "Carregando a ficha e os cálculos...";
+            currentPdfBytes = await file.arrayBuffer();
+            imagesToProcess = []; 
+            
+            const loadingTask = pdfjsLib.getDocument({
+                data: new Uint8Array(currentPdfBytes), // Proteção contra erro de leitura
+                enableJavaScript: true 
+            });
+            
+            const pdfDocument = await loadingTask.promise;
+            pdfViewer.setDocument(pdfDocument);
+            
+            document.getElementById('save-btn').style.display = 'inline-block';
+            document.getElementById('status').innerText = "Ficha pronta. Os cálculos operam ao pressionar 'Tab' após digitar.";
+        } catch (error) {
+            console.error(error);
+            document.getElementById('status').innerText = "Erro ao carregar o PDF.";
+        }
     });
 
-    // 2. INTERCEPTAÇÃO DO CAMPO DE IMAGEM (RÁPIDO)
+    // 2. DETECTAR CLIQUE NO CAMPO DE IMAGEM
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
-        // Se clicar em um botão da ficha (geralmente usado para imagens)
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
             lastClickedField = target.closest('.buttonWidgetAnnotation') || target;
             document.getElementById('img-selector').click();
         }
     });
 
-    // 3. EXIBIÇÃO INSTANTÂNEA DA IMAGEM (OVERLAY)
+    // 3. EXIBIR IMAGEM INSTANTANEAMENTE (Sem recarregar o PDF)
     document.getElementById('img-selector').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file || !lastClickedField) return;
+        e.target.value = ''; // Limpa para permitir nova seleção
 
-        // Limpa o input para permitir selecionar a mesma imagem de novo se precisar
-        e.target.value = '';
-
-        // Cria uma URL temporária super leve
         const imgUrl = URL.createObjectURL(file);
         const imgBuffer = await file.arrayBuffer();
 
-        // Pega o tamanho e posição exata do campo onde o usuário clicou na tela
         const rect = lastClickedField.getBoundingClientRect();
-        const viewerRect = document.getElementById('viewerContainer').getBoundingClientRect();
-
-        // Cria a imagem visual na tela instantaneamente
-        const visualImg = document.createElement('img');
-        visualImg.src = imgUrl;
-        visualImg.className = 'instant-img';
-        visualImg.style.width = rect.width + 'px';
-        visualImg.style.height = rect.height + 'px';
-        
-        // Adiciona a imagem dentro da mesma "página" (div) para não bugar se o usuário rolar o mouse
         const pageContainer = lastClickedField.closest('.page');
+
         if (pageContainer) {
-            // Calcula a posição relativa dentro da página
+            const visualImg = document.createElement('img');
+            visualImg.src = imgUrl;
+            visualImg.className = 'instant-img';
+            visualImg.style.width = rect.width + 'px';
+            visualImg.style.height = rect.height + 'px';
+            
             const pageRect = pageContainer.getBoundingClientRect();
             visualImg.style.left = (rect.left - pageRect.left) + 'px';
             visualImg.style.top = (rect.top - pageRect.top) + 'px';
             pageContainer.appendChild(visualImg);
+
+            imagesToProcess.push({
+                buffer: imgBuffer,
+                type: file.type,
+                widthPct: rect.width / pageContainer.clientWidth,
+                heightPct: rect.height / pageContainer.clientHeight,
+                leftPct: (rect.left - pageRect.left) / pageContainer.clientWidth,
+                topPct: (rect.top - pageRect.top) / pageContainer.clientHeight
+            });
+
+            document.getElementById('status').innerText = "Imagem aplicada na tela!";
         }
-
-        // Guarda a imagem e as proporções para o processamento final
-        // Coordenadas PDF são invertidas (Y começa de baixo), então salvamos a posição relativa
-        imagesToProcess.push({
-            buffer: imgBuffer,
-            type: file.type,
-            widthPct: rect.width / pageContainer.clientWidth,
-            heightPct: rect.height / pageContainer.clientHeight,
-            leftPct: (rect.left - pageContainer.getBoundingClientRect().left) / pageContainer.clientWidth,
-            topPct: (rect.top - pageContainer.getBoundingClientRect().top) / pageContainer.clientHeight
-        });
-
-        document.getElementById('status').innerText = "Imagem aplicada!";
     });
 
-    // 4. PROCESSAMENTO FINAL AO SALVAR (Aqui entra o PDF-Lib pesado)
+    // 4. SALVAR ARQUIVO FINAL COM AS IMAGENS DEFINITIVAS
     document.getElementById('save-btn').addEventListener('click', async () => {
         try {
             document.getElementById('status').innerText = "Gerando arquivo final... Aguarde.";
-            document.getElementById('save-btn').disabled = true;
-
+            
             const pdfDoc = await PDFDocument.load(currentPdfBytes);
-            const page = pdfDoc.getPages()[0]; // Assume que é a primeira página
+            const page = pdfDoc.getPages()[0]; 
             const { width, height } = page.getSize();
 
-            // Insere todas as imagens guardadas na fila
+            // Grava todas as imagens selecionadas dentro do código do PDF
             for (const imgData of imagesToProcess) {
-                let embeddedImage;
-                if (imgData.type === 'image/png') embeddedImage = await pdfDoc.embedPng(imgData.buffer);
-                else embeddedImage = await pdfDoc.embedJpg(imgData.buffer);
+                let embeddedImage = (imgData.type === 'image/png') 
+                    ? await pdfDoc.embedPng(imgData.buffer) 
+                    : await pdfDoc.embedJpg(imgData.buffer);
 
-                // Converte a porcentagem da tela de volta para os pontos (PT) do PDF
                 const imgWidth = imgData.widthPct * width;
                 const imgHeight = imgData.heightPct * height;
                 const imgX = imgData.leftPct * width;
-                // PDF Y axis is bottom-to-top, CSS is top-to-bottom
                 const imgY = height - (imgData.topPct * height) - imgHeight;
 
                 page.drawImage(embeddedImage, {
@@ -169,9 +184,6 @@
                 });
             }
 
-            // Opcional: Se quiser capturar os valores de texto preenchidos,
-            // é necessário extrair via JS e injetar via pdfDoc.getForm() aqui.
-
             const finalPdfBytes = await pdfDoc.save();
             const blob = new Blob([finalPdfBytes], { type: "application/pdf" });
             const link = document.createElement('a');
@@ -180,11 +192,9 @@
             link.click();
 
             document.getElementById('status').innerText = "Download concluído!";
-            document.getElementById('save-btn').disabled = false;
         } catch (error) {
             console.error(error);
-            document.getElementById('status').innerText = "Erro ao salvar arquivo.";
-            document.getElementById('save-btn').disabled = false;
+            document.getElementById('status').innerText = "Erro ao salvar o arquivo final.";
         }
     });
 </script>
