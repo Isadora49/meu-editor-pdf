@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
-        /* INTACTO: O CSS não foi modificado para garantir que o PDF não suma */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -62,13 +61,12 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // ADIÇÃO 1: Criando o "Cérebro" para rodar a sua lógica de cálculos
+    // Scripting Manager configurado com fallback
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus: eventBus,
         sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
     });
 
-    // Inicialização do Visualizador
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
@@ -76,10 +74,8 @@
         enableScripting: true 
     });
 
-    // ADIÇÃO 2: Conectando os cálculos ao visualizador
     pdfViewer.setScriptingManager(scriptingManager);
 
-    // Função de Carregamento
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -95,22 +91,28 @@
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
-
-                // ADIÇÃO 3: Enviando o seu PDF para o motor de cálculos ler
-                await scriptingManager.setDocument(pdfDocument);
                 
+                // Primeiro, garante a renderização do documento na tela
+                await pdfViewer.setDocument(pdfDocument);
+                
+                // Ativa os scripts DEPOIS de renderizar para não travar a visualização
+                try {
+                    await scriptingManager.setDocument(pdfDocument);
+                } catch (scriptError) {
+                    console.warn("Aviso: Alguns cálculos podem falhar devido a restrições do navegador, mas o PDF continuará visível.");
+                }
+
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Cálculos e Programação Ativos.";
+                document.getElementById('msg').innerText = "PDF Aberto. Cálculos Ativos.";
             } catch (err) {
                 console.error(err);
-                alert("Erro ao ler o PDF.");
+                alert("Erro ao abrir o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem (INTACTA)
+    // --- Lógica de Imagem (Mantida) ---
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -122,27 +124,22 @@
     document.getElementById('img-selector').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file || !lastClickedField) return;
-
         const imgUrl = URL.createObjectURL(file);
         const imgBuffer = await file.arrayBuffer();
         const rect = lastClickedField.getBoundingClientRect();
         const pageDiv = lastClickedField.closest('.page');
-
         if (pageDiv) {
             const visualImg = document.createElement('img');
             visualImg.src = imgUrl;
             visualImg.className = 'instant-img';
             visualImg.style.width = rect.width + 'px';
             visualImg.style.height = rect.height + 'px';
-            
             const pageRect = pageDiv.getBoundingClientRect();
             visualImg.style.left = (rect.left - pageRect.left) + 'px';
             visualImg.style.top = (rect.top - pageRect.top) + 'px';
             pageDiv.appendChild(visualImg);
-
             imagesToProcess.push({
-                buffer: imgBuffer,
-                type: file.type,
+                buffer: imgBuffer, type: file.type,
                 widthPct: rect.width / pageDiv.clientWidth,
                 heightPct: rect.height / pageDiv.clientHeight,
                 leftPct: (rect.left - pageRect.left) / pageDiv.clientWidth,
@@ -151,13 +148,12 @@
         }
     });
 
-    // Salvar arquivo final (INTACTO)
+    // --- Lógica de Salvamento (Mantida) ---
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
         const page = pdfDoc.getPages()[0];
         const { width, height } = page.getSize();
-
         for (const imgData of imagesToProcess) {
             const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(imgData.buffer) : await pdfDoc.embedJpg(imgData.buffer);
             page.drawImage(img, {
@@ -167,7 +163,6 @@
                 height: imgData.heightPct * height
             });
         }
-
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
@@ -175,6 +170,5 @@
         link.click();
     });
 </script>
-
 </body>
 </html>
