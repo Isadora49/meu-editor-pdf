@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
-        /* Baseado no Código 2 para garantir que o PDF apareça */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -62,21 +61,20 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // 1. Criamos o gerenciador de cálculos (Sandbox)
+    // LÓGICA DE CÁLCULOS (Ativada de forma segura)
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus: eventBus,
         sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
     });
 
-    // 2. Inicializamos o visualizador (Iniciando com as opções do Código 2 + Scripting)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true 
+        enableScripting: true // Ativa a capacidade de ler scripts
     });
 
-    // Conectamos o gerenciador ao visualizador
+    // Conecta o motor de scripts ao visualizador antes de abrir o arquivo
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -88,31 +86,30 @@
             currentPdfBytes = new Uint8Array(this.result);
             
             try {
-                // Carregamento do documento com JS habilitado
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true 
+                    enableJavaScript: true // Garante que o JS interno do seu PDF seja lido
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // Primeiro: Fazemos o PDF aparecer (Prioridade visual do Código 2)
+                // Primeiro: Desenha o PDF na tela (Igual ao código 2)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // Segundo: Ligamos os cálculos (Programação)
+                // Segundo: Ativa os cálculos (Ação que faltava no código 2)
                 await scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado. Cálculos Ativados.";
+                document.getElementById('msg').innerText = "✓ PDF Pronto e Cálculos Ativos";
             } catch (err) {
                 console.error(err);
-                document.getElementById('msg').innerText = "Erro ao carregar PDF.";
+                alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem (Mantida como você gosta)
+    // Lógica para Campo de Imagem (Mantida do código que você gosta)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -172,7 +169,7 @@
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
-        link.download = "ficha_preenchida.pdf";
+        link.download = "ficha_atualizada.pdf";
         link.click();
     });
 </script>
