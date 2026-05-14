@@ -2,49 +2,48 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Ficha Pro - Scripts Ativos</title>
+    <title>Editor de Ficha Profissional</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background-color: #323639; font-family: sans-serif; overflow: hidden; }
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-color: #2b2b2b; overflow: hidden; display: flex; flex-direction: column; }
         
-        /* Barra superior fixa */
         .toolbar { 
-            height: 60px; background: #202124; display: flex; align-items: center; 
-            padding: 0 20px; color: white; z-index: 1000; position: relative;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            height: 60px; background: #1a1a1a; display: flex; align-items: center; 
+            padding: 0 20px; color: white; border-bottom: 2px solid #0078d4; flex-shrink: 0;
         }
         
         .btn { 
-            background: #8ab4f8; color: #202124; border: none; padding: 10px 20px; 
+            background: #0078d4; color: white; border: none; padding: 10px 20px; 
             border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px;
         }
 
-        /* Container do PDF: Agora com altura garantida por cálculo */
+        /* Container Robusto */
         #viewerContainer { 
-            position: absolute; 
-            top: 60px; 
-            bottom: 0; 
-            left: 0; 
-            right: 0; 
+            flex-grow: 1; 
+            width: 100%; 
+            position: relative; 
             overflow: auto; 
             background: #525659;
         }
 
-        .pdfViewer .page { margin: 20px auto; border: none; box-shadow: 0 8px 16px rgba(0,0,0,0.4); }
-        .instant-img { position: absolute; z-index: 999; pointer-events: none; object-fit: cover; }
+        #viewer { margin: 0 auto; }
         
-        #status { font-size: 14px; color: #81c995; font-weight: bold; }
+        .pdfViewer .page { margin: 20px auto !important; }
+        .instant-img { position: absolute; z-index: 999; pointer-events: none; object-fit: cover; border: 1px solid #0078d4; }
+        
+        #status-info { font-size: 13px; color: #00ff88; margin-left: auto; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
-    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar</button>
-    <span id="status">Selecione seu arquivo PDF preparado</span>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Selecionar Ficha PDF</button>
+    <button class="btn" id="save-btn" style="display:none; background: #28a745;">📥 Salvar Resultado</button>
+    <div id="status-info">Aguardando arquivo...</div>
 </div>
 
 <input type="file" id="img-selector" accept="image/*" style="display:none">
@@ -61,7 +60,6 @@
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
 
-    // Configuração dos caminhos
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
 
@@ -69,56 +67,58 @@
     let imagesToProcess = [];
     let lastClickedField = null;
 
-    // Inicialização do barramento de eventos
     const eventBus = new pdfjsViewer.EventBus();
 
-    // Gerenciador de Scripts (Onde sua programação JS do PDF vai rodar)
+    // 1. Criar o gerenciador de scripts mas não ativar ainda
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus,
         sandboxBundleSrc
     });
 
-    // Visualizador com suporte a formulários e scripts
+    // 2. Inicializar visualizador
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true,
+        enableScripting: true
     });
 
-    // Conecta o cérebro de scripts ao visualizador
     pdfViewer.setScriptingManager(scriptingManager);
 
-    // Carregamento do arquivo
+    // 3. Processo de carregamento blindado
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = async function() {
-            currentPdfBytes = new Uint8Array(this.result);
-            
-            const loadingTask = pdfjsLib.getDocument({
-                data: currentPdfBytes,
-                enableJavaScript: true
-            });
-
             try {
+                currentPdfBytes = new Uint8Array(this.result);
+                
+                const loadingTask = pdfjsLib.getDocument({
+                    data: currentPdfBytes,
+                    enableJavaScript: true
+                });
+
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
-                scriptingManager.setDocument(pdfDocument); // Ativa o JS do seu PDF
+                
+                // Primeiro desenha o PDF
+                await pdfViewer.setDocument(pdfDocument);
+                
+                // Depois que o PDF está na tela, ativa sua programação JS
+                await scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'block';
-                document.getElementById('status').innerText = "✓ Ficha Carregada com Programação Ativa";
+                document.getElementById('status-info').innerText = "✓ PDF e Programação Ativados";
             } catch (err) {
-                console.error("Erro ao abrir PDF:", err);
-                alert("Erro ao carregar o PDF.");
+                console.error(err);
+                alert("Erro crítico: O PDF não pôde ser renderizado.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem (Instantânea)
+    // Lógica da Imagem (Totalmente funcional)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -159,7 +159,6 @@
         }
     });
 
-    // Salvar Final
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
@@ -182,7 +181,7 @@
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
-        link.download = "ficha_calculada.pdf";
+        link.download = "ficha_atualizada.pdf";
         link.click();
     });
 </script>
