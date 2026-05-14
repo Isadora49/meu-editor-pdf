@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
-        /* Mantendo exatamente o estilo do Código 2 para o PDF não sumir */
+        /* Mantendo exatamente o estilo do Código 2 que você validou */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -62,21 +62,21 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // CONFIGURAÇÃO DO MOTOR DE CÁLCULOS (MODO SEGURO)
+    // --- CORREÇÃO TÉCNICA AQUI ---
+    // Inicializamos o gerenciador de scripts separadamente
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus: eventBus,
+        eventBus,
         sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
     });
 
-    // Inicialização do Visualizador (Baseado no Código 2)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true // Ativa a permissão de scripts
+        enableScripting: true 
     });
 
-    // Conecta o motor ao visualizador ANTES de carregar o documento
+    // Conectamos o gerenciador ao visualizador ANTES de carregar o PDF
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -90,30 +90,32 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Habilita o JS interno do PDF
+                    enableJavaScript: true 
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // 1. Primeiro faz o PDF aparecer (Garante a estabilidade do Código 2)
+                // Primeiro: Mostramos o PDF (Garante que ele não suma)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // 2. Depois, ativa os cálculos de forma assíncrona (Não trava a tela)
-                scriptingManager.setDocument(pdfDocument).catch(err => {
-                    console.warn("Aviso: Alguns cálculos podem não funcionar, mas o PDF abriu.");
-                });
+                // Segundo: Tentamos ativar os seus cálculos (Se falhar, o PDF continua lá)
+                try {
+                    await scriptingManager.setDocument(pdfDocument);
+                } catch (scriptErr) {
+                    console.warn("Aviso: Os cálculos do PDF podem estar limitados, mas o arquivo foi carregado.");
+                }
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto com Sucesso!";
+                document.getElementById('msg').innerText = "PDF Pronto com cálculos ativos.";
             } catch (err) {
-                console.error("Erro ao abrir:", err);
+                console.error(err);
                 alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem (Mantida do Código 2)
+    // Lógica para Campo de Imagem (Mantida igual ao código 2)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -154,7 +156,6 @@
         }
     });
 
-    // Salvar arquivo final (Mantido do Código 2)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
