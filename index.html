@@ -47,16 +47,12 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // --- ADIÇÃO SEGURA: Scripting Manager com Try/Catch ---
-    let scriptingManager = null;
-    try {
-        scriptingManager = new pdfjsViewer.PDFScriptingManager({
-            eventBus: eventBus,
-            sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
-        });
-    } catch (e) {
-        console.warn("Aviso: O motor de cálculos não pôde ser pré-carregado.");
-    }
+    // --- ACRESCENTADO: Criando o motor de scripts (Cálculos) ---
+    // Usamos a versão exata da biblioteca para evitar que o código quebre.
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+        eventBus: eventBus,
+        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
+    });
 
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
@@ -65,11 +61,10 @@
         enableScripting: true 
     });
 
-    // Conecta o motor ao visualizador se ele existir
-    if (scriptingManager) {
-        pdfViewer.setScriptingManager(scriptingManager);
-    }
+    // --- ACRESCENTADO: Conectando o motor de cálculos ao visualizador ---
+    pdfViewer.setScriptingManager(scriptingManager);
 
+    // Função de Carregamento
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -85,31 +80,22 @@
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                
-                // Prioridade 1: Mostrar o PDF na tela
-                await pdfViewer.setDocument(pdfDocument);
-                
-                // Prioridade 2: Tentar ativar sua lógica de cálculos (GitHub)
-                if (scriptingManager) {
-                    try {
-                        await scriptingManager.setDocument(pdfDocument);
-                        document.getElementById('msg').innerText = "✓ PDF e Cálculos Ativados!";
-                    } catch (jsError) {
-                        console.error("Erro na lógica do PDF:", jsError);
-                        document.getElementById('msg').innerText = "PDF Aberto (Erro na lógica de cálculo).";
-                    }
-                }
+                pdfViewer.setDocument(pdfDocument);
+
+                // --- ACRESCENTADO: Ativando os cálculos para o documento carregado ---
+                scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
+                document.getElementById('msg').innerText = "PDF Carregado. Programação de cálculos ativa!";
             } catch (err) {
-                console.error("Erro ao carregar PDF:", err);
-                alert("Erro ao abrir o arquivo.");
+                console.error(err);
+                alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // --- Lógica de Imagem (Mantida igual ao código que você enviou) ---
+    // Lógica de Imagem (Mantida do seu código original)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -145,6 +131,7 @@
         }
     });
 
+    // Salvar PDF Final (Mantido do seu código original)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
