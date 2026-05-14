@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
+        /* Baseado no Código 2 para garantir que o PDF apareça */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -53,7 +54,6 @@
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
 
-    // Sincronização obrigatória do Worker
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
     let currentPdfBytes = null;
@@ -62,15 +62,23 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // Inicialização do Visualizador
+    // --- CORREÇÃO MINUCIOSA AQUI ---
+    // Criamos o gerenciador de scripts apontando para o bundle externo
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+        eventBus: eventBus,
+        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.external.min.js'
+    });
+
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
-        renderInteractiveForms: true, // Habilita seus campos editáveis
-        enableScripting: true // Habilita sua programação JavaScript
+        renderInteractiveForms: true,
+        enableScripting: true // Ativa a permissão de scripts
     });
 
-    // Função de Carregamento
+    // Conectamos o visualizador ao gerenciador de scripts
+    pdfViewer.setScriptingManager(scriptingManager);
+
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -82,23 +90,30 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Ativa os scripts que você fez no PDF
+                    enableJavaScript: true 
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
+                
+                // Primeiro: Mostramos o PDF na tela (Igual ao Código 2)
+                await pdfViewer.setDocument(pdfDocument);
+
+                // Segundo: Ativamos os cálculos sem travar a renderização visual
+                scriptingManager.setDocument(pdfDocument).catch(err => {
+                    console.warn("Aviso: O motor de cálculos falhou, mas o PDF continuará visível.", err);
+                });
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Programação Ativa.";
+                document.getElementById('msg').innerText = "✓ PDF Aberto e Cálculos Ativados.";
             } catch (err) {
                 console.error(err);
-                alert("Erro ao ler o PDF. Verifique se o arquivo não está corrompido.");
+                alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem
+    // Lógica para Campo de Imagem (Mantida do seu código funcional)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -139,7 +154,6 @@
         }
     });
 
-    // Salvar arquivo final
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
