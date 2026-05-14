@@ -2,53 +2,49 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizador Pro - Cálculos e Imagem</title>
+    <title>Editor de Ficha Pro - Scripts Ativos</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     
     <style>
-        /* GARANTIA DE VISIBILIDADE: O PDF não some com estas regras */
-        html, body { height: 100%; margin: 0; padding: 0; background-color: #525659; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background-color: #323639; font-family: sans-serif; overflow: hidden; }
         
+        /* Barra superior fixa */
         .toolbar { 
-            position: absolute; top: 0; left: 0; right: 0; height: 56px; 
-            background: #202124; display: flex; align-items: center; 
-            padding: 0 20px; color: white; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.5); 
+            height: 60px; background: #202124; display: flex; align-items: center; 
+            padding: 0 20px; color: white; z-index: 1000; position: relative;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
         
-        /* O Container ocupa todo o resto da tela abaixo da barra */
-        #viewerContainer { 
-            position: absolute; top: 56px; bottom: 30px; left: 0; right: 0; 
-            overflow: auto; background: #525659;
-        }
-        
-        .pdfViewer .page { 
-            border: none; margin: 15px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.6); position: relative; 
-        }
-
         .btn { 
-            background: #8ab4f8; color: #202124; border: none; padding: 10px 18px; 
-            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px; 
+            background: #8ab4f8; color: #202124; border: none; padding: 10px 20px; 
+            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px;
         }
 
-        .instant-img { position: absolute; z-index: 99; object-fit: cover; pointer-events: none; }
-        
-        #status-bar { 
-            position: absolute; bottom: 0; left: 0; right: 0; height: 30px;
-            background: #1a1b1c; color: #9aa0a6; font-size: 12px; display: flex; align-items: center; padding: 0 20px;
+        /* Container do PDF: Agora com altura garantida por cálculo */
+        #viewerContainer { 
+            position: absolute; 
+            top: 60px; 
+            bottom: 0; 
+            left: 0; 
+            right: 0; 
+            overflow: auto; 
+            background: #525659;
         }
+
+        .pdfViewer .page { margin: 20px auto; border: none; box-shadow: 0 8px 16px rgba(0,0,0,0.4); }
+        .instant-img { position: absolute; z-index: 999; pointer-events: none; object-fit: cover; }
+        
+        #status { font-size: 14px; color: #81c995; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir sua Ficha</button>
-    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Baixar PDF Final</button>
-    <span id="file-info" style="font-size: 13px;">Aguardando arquivo...</span>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
+    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar</button>
+    <span id="status">Selecione seu arquivo PDF preparado</span>
 </div>
 
 <input type="file" id="img-selector" accept="image/*" style="display:none">
@@ -57,13 +53,15 @@
     <div id="viewer" class="pdfViewer"></div>
 </div>
 
-<div id="status-bar">Status do Motor: <span id="js-status" style="margin-left:5px; color: #ffab00;">Inativo</span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
 
-    // Caminhos para os Workers e Motor de Cálculo (QuickJS)
+    // Configuração dos caminhos
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
 
@@ -71,15 +69,16 @@
     let imagesToProcess = [];
     let lastClickedField = null;
 
+    // Inicialização do barramento de eventos
     const eventBus = new pdfjsViewer.EventBus();
 
-    // 1. Criar o Gerenciador de Scripts ANTES do Viewer
+    // Gerenciador de Scripts (Onde sua programação JS do PDF vai rodar)
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus,
         sandboxBundleSrc
     });
 
-    // 2. Criar o Visualizador com suporte a Scripts
+    // Visualizador com suporte a formulários e scripts
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
@@ -87,37 +86,39 @@
         enableScripting: true,
     });
 
-    // Conecta o motor ao visualizador
+    // Conecta o cérebro de scripts ao visualizador
     pdfViewer.setScriptingManager(scriptingManager);
 
-    // Carregamento do PDF
+    // Carregamento do arquivo
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        document.getElementById('file-info').innerText = "Iniciando motor de cálculos...";
-        currentPdfBytes = await file.arrayBuffer();
+        const reader = new FileReader();
+        reader.onload = async function() {
+            currentPdfBytes = new Uint8Array(this.result);
+            
+            const loadingTask = pdfjsLib.getDocument({
+                data: currentPdfBytes,
+                enableJavaScript: true
+            });
 
-        const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(currentPdfBytes),
-            enableJavaScript: true 
-        });
-
-        const pdfDocument = await loadingTask.promise;
-        
-        // Renderiza as páginas
-        pdfViewer.setDocument(pdfDocument);
-        
-        // Ativa o motor de JavaScript (AcroJS) da sua ficha
-        await scriptingManager.setDocument(pdfDocument);
-
-        document.getElementById('js-status').innerText = "ATIVO (Cálculos prontos)";
-        document.getElementById('js-status').style.color = "#81c995";
-        document.getElementById('save-btn').style.display = 'inline-block';
-        document.getElementById('file-info').innerText = file.name;
+            try {
+                const pdfDocument = await loadingTask.promise;
+                pdfViewer.setDocument(pdfDocument);
+                scriptingManager.setDocument(pdfDocument); // Ativa o JS do seu PDF
+                
+                document.getElementById('save-btn').style.display = 'block';
+                document.getElementById('status').innerText = "✓ Ficha Carregada com Programação Ativa";
+            } catch (err) {
+                console.error("Erro ao abrir PDF:", err);
+                alert("Erro ao carregar o PDF.");
+            }
+        };
+        reader.readAsArrayBuffer(file);
     });
 
-    // Clique no campo de imagem
+    // Lógica de Imagem (Instantânea)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -126,7 +127,6 @@
         }
     });
 
-    // Inserção visual imediata da imagem
     document.getElementById('img-selector').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file || !lastClickedField) return;
@@ -159,35 +159,31 @@
         }
     });
 
-    // Salvar PDF com programação preservada e imagens novas
+    // Salvar Final
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
-        document.getElementById('file-info').innerText = "Compilando PDF...";
-        
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
-        const page = pdfDoc.getPages()[0]; 
+        const page = pdfDoc.getPages()[0];
         const { width, height } = page.getSize();
 
         for (const imgData of imagesToProcess) {
-            let embeddedImage = (imgData.type === 'image/png') 
+            const embeddedImage = (imgData.type === 'image/png') 
                 ? await pdfDoc.embedPng(imgData.buffer) 
                 : await pdfDoc.embedJpg(imgData.buffer);
 
-            const imgW = imgData.widthPct * width;
-            const imgH = imgData.heightPct * height;
-            const imgX = imgData.leftPct * width;
-            const imgY = height - (imgData.topPct * height) - imgH;
-
-            page.drawImage(embeddedImage, { x: imgX, y: imgY, width: imgW, height: imgH });
+            page.drawImage(embeddedImage, {
+                x: imgData.leftPct * width,
+                y: height - (imgData.topPct * height) - (imgData.heightPct * height),
+                width: imgData.widthPct * width,
+                height: imgData.heightPct * height
+            });
         }
 
         const finalBytes = await pdfDoc.save();
-        const blob = new Blob([finalBytes], { type: "application/pdf" });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = "Ficha_Com_Calculos.pdf";
+        link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
+        link.download = "ficha_calculada.pdf";
         link.click();
-        document.getElementById('file-info').innerText = "Concluído!";
     });
 </script>
 
