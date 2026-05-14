@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
-        /* CSS IGUAL AO CÓDIGO 2 PARA GARANTIR QUE APAREÇA */
+        /* Mantendo exatamente o estilo do Código 2 para o PDF não sumir */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -62,20 +62,21 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // CONFIGURAÇÃO DO MOTOR DE CÁLCULOS (SEM TRAVAR A TELA)
+    // CONFIGURAÇÃO DO MOTOR DE CÁLCULOS (MODO SEGURO)
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus: eventBus,
         sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
     });
 
+    // Inicialização do Visualizador (Baseado no Código 2)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true // Ativa o suporte a scripts
+        enableScripting: true // Ativa a permissão de scripts
     });
 
-    // Conecta o motor de cálculos ao visualizador antes de abrir o PDF
+    // Conecta o motor ao visualizador ANTES de carregar o documento
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -89,30 +90,30 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Permite que o PDF.js leia sua programação
+                    enableJavaScript: true // Habilita o JS interno do PDF
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // PASSO 1: Mostra o PDF na tela primeiro (Igual ao Código 2)
+                // 1. Primeiro faz o PDF aparecer (Garante a estabilidade do Código 2)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // PASSO 2: Ativa os cálculos em segundo plano (O que faltava no Código 2)
+                // 2. Depois, ativa os cálculos de forma assíncrona (Não trava a tela)
                 scriptingManager.setDocument(pdfDocument).catch(err => {
                     console.warn("Aviso: Alguns cálculos podem não funcionar, mas o PDF abriu.");
                 });
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto e Cálculos Ativos.";
+                document.getElementById('msg').innerText = "PDF Aberto com Sucesso!";
             } catch (err) {
-                console.error(err);
+                console.error("Erro ao abrir:", err);
                 alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem (Mantida igual aos dois códigos)
+    // Lógica para Campo de Imagem (Mantida do Código 2)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -153,7 +154,7 @@
         }
     });
 
-    // Salvar arquivo final (Mantida igual ao Código 2)
+    // Salvar arquivo final (Mantido do Código 2)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
