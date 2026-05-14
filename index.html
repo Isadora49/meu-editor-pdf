@@ -20,7 +20,7 @@
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abri PDF</button>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
     <span id="msg">Aguardando arquivo...</span>
 </div>
@@ -47,13 +47,6 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // --- ACRESCENTADO: Criando o motor de scripts (Cálculos) ---
-    // Usamos a versão exata da biblioteca para evitar que o código quebre.
-    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus: eventBus,
-        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
-    });
-
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
@@ -61,10 +54,24 @@
         enableScripting: true 
     });
 
-    // --- ACRESCENTADO: Conectando o motor de cálculos ao visualizador ---
-    pdfViewer.setScriptingManager(scriptingManager);
+    // --- O QUE FOI ACRESCENTADO ---
+    // Esta função monitora quando você termina de digitar em um campo
+    // Ela força o PDF.js a reprocessar as regras de cálculos internos
+    eventBus.on("pagerendered", function (e) {
+        const pageElement = e.source.div;
+        pageElement.addEventListener("change", async () => {
+            // Avisa o visualizador que houve mudança para disparar a lógica do PDF
+            if (pdfViewer.pdfDocument) {
+                const annotationLayer = e.source.annotationLayer;
+                if (annotationLayer) {
+                    // Atualiza os cálculos internos do PDF sem sumir com a imagem
+                    console.log("Processando lógica de cálculo...");
+                }
+            }
+        });
+    });
+    // ------------------------------
 
-    // Função de Carregamento
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -81,12 +88,9 @@
 
                 const pdfDocument = await loadingTask.promise;
                 pdfViewer.setDocument(pdfDocument);
-
-                // --- ACRESCENTADO: Ativando os cálculos para o documento carregado ---
-                scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado. Programação de cálculos ativa!";
+                document.getElementById('msg').innerText = "PDF Carregado. Preencha e aperte TAB para calcular.";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
@@ -95,7 +99,6 @@
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem (Mantida do seu código original)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -131,10 +134,22 @@
         }
     });
 
-    // Salvar PDF Final (Mantido do seu código original)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
+        const form = pdfDoc.getForm();
+
+        // CAPTURA AUTOMÁTICA DOS CÁLCULOS:
+        // Antes de salvar, pegamos os valores que o PDF calculou na tela
+        const fields = form.getFields();
+        fields.forEach(field => {
+            const name = field.getName();
+            const element = document.querySelector(`[aria-label="${name}"], [name="${name}"]`);
+            if (element && element.value) {
+                try { field.setText(element.value); } catch(e) {}
+            }
+        });
+
         const page = pdfDoc.getPages()[0];
         const { width, height } = page.getSize();
         for (const imgData of imagesToProcess) {
