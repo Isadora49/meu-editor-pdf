@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
-        /* CSS do Código 2: Garante que o PDF apareça perfeitamente */
+        /* Baseado no Código 2 para garantir que o PDF apareça */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -62,17 +62,13 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // --- CONFIGURAÇÃO DO MOTOR DE CÁLCULOS ---
-    let scriptingManager = null;
-    if (pdfjsViewer.PDFScriptingManager) {
-        scriptingManager = new pdfjsViewer.PDFScriptingManager({
-            eventBus: eventBus,
-            // Sandbox essencial para rodar o JS que você programou no PDF
-            sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
-        });
-    }
+    // 1. Criamos o gerenciador de cálculos (Sandbox)
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+        eventBus: eventBus,
+        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
+    });
 
-    // Inicialização do Visualizador (Baseado no Código 2, mas com Scripting habilitado)
+    // 2. Inicializamos o visualizador (Iniciando com as opções do Código 2 + Scripting)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
@@ -80,11 +76,9 @@
         enableScripting: true 
     });
 
-    if (scriptingManager) {
-        pdfViewer.setScriptingManager(scriptingManager);
-    }
+    // Conectamos o gerenciador ao visualizador
+    pdfViewer.setScriptingManager(scriptingManager);
 
-    // Função de Carregamento (Protegida para o PDF não sumir)
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -94,36 +88,31 @@
             currentPdfBytes = new Uint8Array(this.result);
             
             try {
+                // Carregamento do documento com JS habilitado
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Habilita a leitura do seu código JS
+                    enableJavaScript: true 
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // Primeiro: Faz o PDF aparecer (Igual ao código 2)
+                // Primeiro: Fazemos o PDF aparecer (Prioridade visual do Código 2)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // Segundo: Tenta ativar os cálculos sem travar a tela
-                if (scriptingManager) {
-                    try {
-                        await scriptingManager.setDocument(pdfDocument);
-                    } catch (jsErr) {
-                        console.warn("Aviso: Erro ao iniciar scripts, mas o PDF será exibido.", jsErr);
-                    }
-                }
+                // Segundo: Ligamos os cálculos (Programação)
+                await scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Programação Ativa.";
+                document.getElementById('msg').innerText = "PDF Carregado. Cálculos Ativados.";
             } catch (err) {
-                console.error("Erro crítico:", err);
-                alert("Erro ao abrir o PDF.");
+                console.error(err);
+                document.getElementById('msg').innerText = "Erro ao carregar PDF.";
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem (Mantida do Código 2)
+    // Lógica de Imagem (Mantida como você gosta)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -164,7 +153,6 @@
         }
     });
 
-    // Salvar arquivo final (Mantido do Código 2)
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
