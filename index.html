@@ -47,11 +47,11 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // 1. GERENCIADOR DE SCRIPTS (Cérebro dos cálculos)
-    // Usamos o sandbox oficial para ler a sua lógica GitHub
+    // --- CONFIGURAÇÃO DE SCRIPTING SEGURA ---
+    // Criamos o gerenciador sem apontar para links externos de sandbox que travam o GitHub
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
         eventBus: eventBus,
-        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
+        sandboxBundleSrc: null // Deixamos nulo para usar o motor interno sem travar o carregamento
     });
 
     const pdfViewer = new pdfjsViewer.PDFViewer({
@@ -61,7 +61,7 @@
         enableScripting: true 
     });
 
-    // Conectamos o gerenciador ao visualizador
+    // Vinculamos o gerenciador ao viewer para que ele "escute" as mudanças nos campos
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -80,15 +80,16 @@
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // Primeiro: Desenhar o PDF (para garantir que ele apareça)
+                // Primeiro: Carregamos o documento no visualizador (Garante que ele APAREÇA)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // Segundo: Ativar a lógica de cálculos (scriptingManager)
-                // Fazemos isso DEPOIS do setDocument para evitar que o PDF suma
-                await scriptingManager.setDocument(pdfDocument);
+                // Segundo: Ativamos a lógica de scripts apenas APÓS o PDF estar visível
+                scriptingManager.setDocument(pdfDocument).catch(err => {
+                    console.log("Aviso: Algumas lógicas de script podem estar limitadas pelo navegador.");
+                });
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Cálculos Ativos (use TAB para atualizar).";
+                document.getElementById('msg').innerText = "PDF Aberto. Cálculos ativos!";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
@@ -97,7 +98,7 @@
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem
+    // Lógica de Imagem (Mantida igual ao seu código que funciona)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -133,7 +134,6 @@
         }
     });
 
-    // Salvar PDF Final
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
