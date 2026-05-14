@@ -20,7 +20,7 @@
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abriir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
     <span id="msg">Aguardando arquivo...</span>
 </div>
@@ -47,12 +47,8 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // --- CONFIGURAÇÃO DE SCRIPTING SEGURA ---
-    // Criamos o gerenciador sem apontar para links externos de sandbox que travam o GitHub
-    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus: eventBus,
-        sandboxBundleSrc: null // Deixamos nulo para usar o motor interno sem travar o carregamento
-    });
+    // 1. CRIAR O GERENCIADOR DE SCRIPTS (Sem usar links externos de sandbox que quebram o código)
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({ eventBus });
 
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
@@ -61,7 +57,7 @@
         enableScripting: true 
     });
 
-    // Vinculamos o gerenciador ao viewer para que ele "escute" as mudanças nos campos
+    // 2. CONECTAR O GERENCIADOR AO VISUALIZADOR
     pdfViewer.setScriptingManager(scriptingManager);
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -79,17 +75,13 @@
                 });
 
                 const pdfDocument = await loadingTask.promise;
+                pdfViewer.setDocument(pdfDocument);
                 
-                // Primeiro: Carregamos o documento no visualizador (Garante que ele APAREÇA)
-                await pdfViewer.setDocument(pdfDocument);
-                
-                // Segundo: Ativamos a lógica de scripts apenas APÓS o PDF estar visível
-                scriptingManager.setDocument(pdfDocument).catch(err => {
-                    console.log("Aviso: Algumas lógicas de script podem estar limitadas pelo navegador.");
-                });
+                // 3. ATIVAR A LÓGICA NO DOCUMENTO CARREGADO
+                scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Cálculos ativos!";
+                document.getElementById('msg').innerText = "PDF Carregado. Use TAB para calcular.";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
@@ -98,7 +90,7 @@
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem (Mantida igual ao seu código que funciona)
+    // --- Lógica de Imagem e Salvamento permanecem IDÊNTICAS ao seu código original ---
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
