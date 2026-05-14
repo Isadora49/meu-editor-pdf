@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editor de Ficha Profissional</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
@@ -10,181 +11,217 @@
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     
     <style>
-        /* Garante que o PDF ocupe a tela toda */
-        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #525659; }
-        body { display: flex; flex-direction: column; font-family: 'Segoe UI', sans-serif; }
-        
-        .toolbar { 
-            height: 56px; background: #202124; display: flex; align-items: center; 
-            padding: 0 20px; color: white; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.5); 
-        }
-        
-        .btn { 
-            background: #8ab4f8; color: #202124; border: none; padding: 10px 18px; 
-            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px; 
-        }
-        
-        /* O segredo para o PDF não sumir: flex-grow e position absolute */
-        #viewerContainer { 
-            flex-grow: 1; position: relative; overflow: auto; width: 100%; height: 100%; 
-        }
-        
-        .pdfViewer .page { 
-            border: none; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.6); position: relative; 
+        /* CSS BLINDADO - Garante que nada suma */
+        html, body { 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background-color: #2c2e30;
+            display: flex;
+            flex-direction: column;
         }
 
-        .instant-img { position: absolute; z-index: 99; object-fit: cover; pointer-events: none; border: 1px solid #000; }
-        
-        #status-bar { height: 24px; background: #1a1b1c; color: #9aa0a6; font-size: 12px; display: flex; align-items: center; padding: 0 20px; }
+        .toolbar { 
+            height: 60px; 
+            background: #1e1e1e; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 20px; 
+            color: white; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .btn { 
+            background: #0078d4; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            margin-right: 15px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #106ebe; }
+        .btn-save { background: #28a745; display: none; }
+        .btn-save:hover { background: #218838; }
+
+        /* AREA DO PDF - Forçada a ocupar 100% do espaço restante */
+        #viewerContainer { 
+            flex: 1; 
+            width: 100%; 
+            position: relative; 
+            overflow: auto; 
+            background: #525659;
+            display: block; /* Garante visibilidade */
+        }
+
+        .pdfViewer .page { 
+            margin: 20px auto; 
+            border: none; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+            position: relative;
+        }
+
+        /* Sobreposição de imagem rápida */
+        .instant-img { 
+            position: absolute; 
+            z-index: 999; 
+            object-fit: cover; 
+            pointer-events: none; 
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        #status-msg { margin-left: auto; color: #ccc; font-size: 13px; }
     </style>
 </head>
 <body>
 
-<div class="toolbar">
-    <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
-    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
-    <span id="file-info" style="font-size: 14px;">Aguardando arquivo...</span>
-</div>
+    <div class="toolbar">
+        <input type="file" id="file-input" accept="application/pdf" style="display:none">
+        <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
+        <button class="btn btn-save" id="save-btn">💾 Salvar Alterações</button>
+        <div id="status-msg">Aguardando arquivo...</div>
+    </div>
 
-<input type="file" id="img-selector" accept="image/*" style="display:none">
+    <input type="file" id="img-selector" accept="image/*" style="display:none">
 
-<div id="viewerContainer">
-    <div id="viewer" class="pdfViewer"></div>
-</div>
+    <div id="viewerContainer">
+        <div id="viewer" class="pdfViewer"></div>
+    </div>
 
-<div id="status-bar">Status: <span id="engine-status" style="margin-left: 5px;">Aguardando...</span></div>
+    <script>
+        const { PDFDocument } = PDFLib;
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
 
-<script>
-    const pdfjsLib = window['pdfjs-dist/build/pdf'];
-    const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
+        // Configuração dos caminhos do motor (Essencial para cálculos funcionar)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.external.min.js';
+        let currentPdfBytes = null;
+        let imagesToProcess = [];
+        let lastClickedField = null;
 
-    let currentPdfBytes = null;
-    let imagesToProcess = [];
-    let lastClickedField = null;
+        const eventBus = new pdfjsViewer.EventBus();
 
-    const eventBus = new pdfjsViewer.EventBus();
+        // 1. Criar o Gerenciador de Scripts (Isso faz sua programação interna rodar)
+        const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+            eventBus,
+            sandboxBundleSrc
+        });
 
-    // 1. Gerenciador de Scripts (Fundamental para seus cálculos funcionarem)
-    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus,
-        sandboxBundleSrc
-    });
+        // 2. Criar o Visualizador
+        const pdfViewer = new pdfjsViewer.PDFViewer({
+            container: document.getElementById('viewerContainer'),
+            eventBus: eventBus,
+            renderInteractiveForms: true, // Habilita campos editáveis
+            enableScripting: true         // Ativa o motor de cálculos
+        });
 
-    // 2. Visualizador
-    const pdfViewer = new pdfjsViewer.PDFViewer({
-        container: document.getElementById('viewerContainer'),
-        eventBus: eventBus,
-        renderInteractiveForms: true,
-        enableScripting: true,
-    });
+        // Conecta o motor de cálculos ao visualizador
+        pdfViewer.setScriptingManager(scriptingManager);
 
-    pdfViewer.setScriptingManager(scriptingManager);
+        // 3. Ação de carregar o PDF
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-    // Carregar o arquivo
-    document.getElementById('file-input').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+            document.getElementById('status-msg').innerText = "Iniciando motor de cálculos...";
+            currentPdfBytes = await file.arrayBuffer();
 
-        document.getElementById('file-info').innerText = "Processando programação interna...";
-        currentPdfBytes = await file.arrayBuffer();
-
-        try {
             const loadingTask = pdfjsLib.getDocument({
                 data: new Uint8Array(currentPdfBytes),
-                enableJavaScript: true 
+                enableJavaScript: true // Permite que seus scripts rodem
             });
 
             const pdfDocument = await loadingTask.promise;
+            
+            // Renderiza o PDF na tela
             pdfViewer.setDocument(pdfDocument);
+            
+            // Ativa os cálculos do seu documento
             scriptingManager.setDocument(pdfDocument);
 
-            document.getElementById('engine-status').innerText = "Motor de cálculos ativo!";
-            document.getElementById('engine-status').style.color = "#81c995";
-            document.getElementById('save-btn').style.display = 'inline-block';
-            document.getElementById('file-info').innerText = file.name;
-        } catch (err) {
-            console.error(err);
-            document.getElementById('engine-status').innerText = "Erro ao carregar motor de scripts.";
-        }
-    });
+            document.getElementById('save-btn').style.display = 'block';
+            document.getElementById('status-msg').innerText = "Ficha Ativa: " + file.name;
+        });
 
-    // Clique no campo de imagem
-    document.getElementById('viewerContainer').addEventListener('click', (e) => {
-        const target = e.target;
-        if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
-            lastClickedField = target.closest('.buttonWidgetAnnotation') || target;
-            document.getElementById('img-selector').click();
-        }
-    });
+        // 4. Lógica de Imagem (Ao clicar em um botão de imagem da ficha)
+        document.getElementById('viewerContainer').addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
+                lastClickedField = target.closest('.buttonWidgetAnnotation') || target;
+                document.getElementById('img-selector').click();
+            }
+        });
 
-    // Renderizar imagem na tela imediatamente
-    document.getElementById('img-selector').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file || !lastClickedField) return;
+        document.getElementById('img-selector').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !lastClickedField) return;
 
-        const imgUrl = URL.createObjectURL(file);
-        const imgBuffer = await file.arrayBuffer();
-        const rect = lastClickedField.getBoundingClientRect();
-        const pageContainer = lastClickedField.closest('.page');
+            const imgUrl = URL.createObjectURL(file);
+            const imgBuffer = await file.arrayBuffer();
+            const rect = lastClickedField.getBoundingClientRect();
+            const pageDiv = lastClickedField.closest('.page');
 
-        if (pageContainer) {
-            const visualImg = document.createElement('img');
-            visualImg.src = imgUrl;
-            visualImg.className = 'instant-img';
-            visualImg.style.width = rect.width + 'px';
-            visualImg.style.height = rect.height + 'px';
+            if (pageDiv) {
+                // Cria a prévia visual instantânea
+                const visualImg = document.createElement('img');
+                visualImg.src = imgUrl;
+                visualImg.className = 'instant-img';
+                visualImg.style.width = rect.width + 'px';
+                visualImg.style.height = rect.height + 'px';
+                
+                const pageRect = pageDiv.getBoundingClientRect();
+                visualImg.style.left = (rect.left - pageRect.left) + 'px';
+                visualImg.style.top = (rect.top - pageRect.top) + 'px';
+                
+                pageDiv.appendChild(visualImg);
+
+                // Guarda para o salvamento final
+                imagesToProcess.push({
+                    buffer: imgBuffer,
+                    type: file.type,
+                    wPct: rect.width / pageDiv.clientWidth,
+                    hPct: rect.height / pageDiv.clientHeight,
+                    lPct: (rect.left - pageRect.left) / pageDiv.clientWidth,
+                    tPct: (rect.top - pageRect.top) / pageDiv.clientHeight
+                });
+            }
+        });
+
+        // 5. Salvar o PDF Real (Injetando as imagens e mantendo os cálculos)
+        document.getElementById('save-btn').addEventListener('click', async () => {
+            document.getElementById('status-msg').innerText = "Processando arquivo final...";
             
-            const pageRect = pageContainer.getBoundingClientRect();
-            visualImg.style.left = (rect.left - pageRect.left) + 'px';
-            visualImg.style.top = (rect.top - pageRect.top) + 'px';
-            pageContainer.appendChild(visualImg);
+            const pdfDoc = await PDFDocument.load(currentPdfBytes);
+            const page = pdfDoc.getPages()[0];
+            const { width, height } = page.getSize();
 
-            imagesToProcess.push({
-                buffer: imgBuffer,
-                type: file.type,
-                widthPct: rect.width / pageContainer.clientWidth,
-                heightPct: rect.height / pageContainer.clientHeight,
-                leftPct: (rect.left - pageRect.left) / pageContainer.clientWidth,
-                topPct: (rect.top - pageRect.top) / pageContainer.clientHeight
-            });
-        }
-    });
+            for (const imgData of imagesToProcess) {
+                let img = (imgData.type === 'image/png') 
+                    ? await pdfDoc.embedPng(imgData.buffer) 
+                    : await pdfDoc.embedJpg(imgData.buffer);
 
-    // Salvar arquivo com PDF-Lib
-    document.getElementById('save-btn').addEventListener('click', async () => {
-        if (!window.PDFLib) return alert("Erro: Biblioteca PDF-Lib não carregada.");
-        
-        document.getElementById('file-info').innerText = "Injetando imagens e salvando...";
-        const pdfDoc = await window.PDFLib.PDFDocument.load(currentPdfBytes);
-        const page = pdfDoc.getPages()[0]; 
-        const { width, height } = page.getSize();
+                const realW = imgData.wPct * width;
+                const realH = imgData.hPct * height;
+                const realX = imgData.lPct * width;
+                const realY = height - (imgData.tPct * height) - realH;
 
-        for (const imgData of imagesToProcess) {
-            let embeddedImage = (imgData.type === 'image/png') 
-                ? await pdfDoc.embedPng(imgData.buffer) 
-                : await pdfDoc.embedJpg(imgData.buffer);
+                page.drawImage(img, { x: realX, y: realY, width: realW, height: realH });
+            }
 
-            const imgW = imgData.widthPct * width;
-            const imgH = imgData.heightPct * height;
-            const imgX = imgData.leftPct * width;
-            const imgY = height - (imgData.topPct * height) - imgH;
-
-            page.drawImage(embeddedImage, { x: imgX, y: imgY, width: imgW, height: imgH });
-        }
-
-        const finalBytes = await pdfDoc.save();
-        const blob = new Blob([finalBytes], { type: "application/pdf" });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = "ficha_finalizada.pdf";
-        link.click();
-        document.getElementById('file-info').innerText = "Salvo com sucesso!";
-    });
-</script>
-
+            const finalBytes = await pdfDoc.save();
+            const blob = new Blob([finalBytes], { type: "application/pdf" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "Ficha_Programada.pdf";
+            link.click();
+            document.getElementById('status-msg').innerText = "Download concluído!";
+        });
+    </script>
 </body>
 </html>
