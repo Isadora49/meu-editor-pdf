@@ -2,41 +2,40 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Ficha - Oficial</title>
+    <title>Editor de Ficha - Com Lógica JS</title>
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
+        body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background: #202124; overflow: hidden; display: flex; flex-direction: column; font-family: sans-serif; }
         
         .toolbar { 
-            height: 56px; background: #323639; display: flex; align-items: center; 
-            padding: 0 20px; color: white; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            height: 60px; background: #323639; display: flex; align-items: center; 
+            padding: 0 20px; border-bottom: 2px solid #8ab4f8; flex-shrink: 0; z-index: 100;
         }
         
         .btn { 
-            background: #8ab4f8; color: #202124; border: none; padding: 8px 16px; 
-            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 12px;
+            background: #8ab4f8; color: #202124; border: none; padding: 10px 18px; 
+            border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 15px;
         }
 
         #viewerContainer { 
-            position: absolute; top: 56px; bottom: 0; left: 0; right: 0; 
-            overflow: auto; background: #525659;
+            flex-grow: 1; width: 100%; position: relative; overflow: auto; background: #525659;
         }
 
-        .pdfViewer .page { margin: 15px auto; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); position: relative; }
+        .pdfViewer .page { margin: 20px auto; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .instant-img { position: absolute; z-index: 99; pointer-events: none; object-fit: cover; }
         
-        #msg { margin-left: auto; font-size: 13px; color: #81c995; }
+        #status { margin-left: auto; font-size: 13px; color: #81c995; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
-    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
-    <span id="msg">Aguardando arquivo...</span>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF Programado</button>
+    <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar e Baixar</button>
+    <span id="status">Aguardando PDF...</span>
 </div>
 
 <input type="file" id="img-selector" accept="image/*" style="display:none">
@@ -45,16 +44,17 @@
     <div id="viewer" class="pdfViewer"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     const pdfjsViewer = window['pdfjs-dist/web/pdf_viewer'];
 
-    // Sincronização obrigatória do Worker
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    // 1. AS DUAS PEÇAS CHAVE: Worker para desenhar, Sandbox para calcular
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const sandboxBundleSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.sandbox.min.js'; // <-- Correção do arquivo que lê o seu código!
 
     let currentPdfBytes = null;
     let imagesToProcess = [];
@@ -62,15 +62,25 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // Inicialização do Visualizador
+    // 2. Criar o Cérebro de Cálculos
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+        eventBus: eventBus,
+        sandboxBundleSrc: sandboxBundleSrc
+    });
+
+    // 3. Criar a Tela e forçar a habilitação de Scripts e Formulários
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
-        renderInteractiveForms: true, // Habilita seus campos editáveis
-        enableScripting: true // Habilita sua programação JavaScript
+        renderInteractiveForms: true,
+        enableScripting: true
     });
 
-    // Função de Carregamento
+    // 4. Conectar a tela ao cérebro (Ida e Volta)
+    pdfViewer.setScriptingManager(scriptingManager);
+    scriptingManager.setViewer(pdfViewer); // <-- Essencial para ele atualizar o PDF quando você digita
+
+    // Carregamento do Documento
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -82,23 +92,26 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Ativa os scripts que você fez no PDF
+                    enableJavaScript: true // Garante que a sua programação seja lida
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
                 
-                document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Aberto. Programação Ativa.";
+                // Aplica o documento na tela e no motor de lógica simultaneamente
+                await pdfViewer.setDocument(pdfDocument);
+                await scriptingManager.setDocument(pdfDocument);
+                
+                document.getElementById('save-btn').style.display = 'block';
+                document.getElementById('status').innerText = "✓ PDF Desenhado e Cálculos Ativos";
             } catch (err) {
                 console.error(err);
-                alert("Erro ao ler o PDF. Verifique se o arquivo não está corrompido.");
+                alert("Erro ao ler o PDF.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem
+    // Lógica das Imagens (já funcional, mantida intacta)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -139,13 +152,14 @@
         }
     });
 
-    // Salvar arquivo final
+    // Botão de Salvar
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
         const page = pdfDoc.getPages()[0];
         const { width, height } = page.getSize();
 
+        // 1. Grava as imagens instantâneas
         for (const imgData of imagesToProcess) {
             const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(imgData.buffer) : await pdfDoc.embedJpg(imgData.buffer);
             page.drawImage(img, {
@@ -156,10 +170,26 @@
             });
         }
 
+        // 2. Extrai os valores reais de texto digitados na tela do PDF.js
+        const form = pdfDoc.getForm();
+        const inputFields = document.querySelectorAll('.textWidgetAnnotation input, .textWidgetAnnotation textarea');
+        
+        inputFields.forEach(input => {
+            const fieldName = input.name;
+            const fieldValue = input.value;
+            if (fieldName && fieldValue) {
+                try {
+                    const pdfField = form.getField(fieldName);
+                    if (pdfField) pdfField.setText(fieldValue);
+                } catch (e) { /* Ignora se o campo não existir */ }
+            }
+        });
+
+        // 3. Salva e baixa
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
-        link.download = "ficha_preenchida.pdf";
+        link.download = "ficha_calculada_e_imagem.pdf";
         link.click();
     });
 </script>
