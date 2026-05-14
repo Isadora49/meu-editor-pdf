@@ -22,7 +22,7 @@
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
     <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abriir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
-    <span id="msg">Aguardando arquivo</span>
+    <span id="msg">Aguardando arquivo...</span>
 </div>
 
 <input type="file" id="img-selector" accept="image/*" style="display:none">
@@ -47,15 +47,24 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // INICIALIZAÇÃO SEGURA: Baseada no Código 2 para não sumir o PDF
+    // --- ACRÉSCIMO PARA LER A LÓGICA DOS CAMPOS ---
+    // Criamos o gerenciador de scripts e apontamos para o arquivo "sandbox" da mesma versão
+    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
+        eventBus,
+        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js',
+    });
+
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true // Ativa a permissão para scripts
+        enableScripting: true 
     });
 
-    // Função de Carregamento
+    // Conectamos o gerenciador de scripts ao visualizador
+    pdfViewer.setScriptingManager(scriptingManager);
+    // ----------------------------------------------
+
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -67,14 +76,17 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Chave para rodar sua lógica GitHub
+                    enableJavaScript: true 
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 pdfViewer.setDocument(pdfDocument);
                 
+                // AVISA o motor de scripts sobre o novo documento carregado
+                scriptingManager.setDocument(pdfDocument);
+                
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado. Teste os cálculos digitando e usando TAB.";
+                document.getElementById('msg').innerText = "PDF Carregado com Lógica Ativa.";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
@@ -83,7 +95,7 @@
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica de Imagem (Mantida do Código 2)
+    // Lógica de Imagem
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
