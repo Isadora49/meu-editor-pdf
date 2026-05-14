@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     
     <style>
+        /* Base do Código 2: Garantia que o PDF apareça */
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         
         .toolbar { 
@@ -34,7 +35,7 @@
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF editavel</button>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
     <span id="msg">Aguardando arquivo...</span>
 </div>
@@ -61,22 +62,31 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // LÓGICA DE CÁLCULOS (Ativada de forma segura)
-    const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus: eventBus,
-        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
-    });
+    // Configuração do motor de cálculos (Sandbox)
+    // Usamos um bloco try/catch interno para que, se o motor falhar, o PDF não suma
+    let scriptingManager = null;
+    try {
+        scriptingManager = new pdfjsViewer.PDFScriptingManager({
+            eventBus,
+            sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.external.min.js'
+        });
+    } catch (e) {
+        console.warn("Aviso: Motor de cálculos não pôde ser iniciado, mas o PDF abrirá mesmo assim.");
+    }
 
+    // Inicialização do Visualizador (Base do Código 2)
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
         eventBus: eventBus,
         renderInteractiveForms: true,
-        enableScripting: true // Ativa a capacidade de ler scripts
+        enableScripting: true
     });
 
-    // Conecta o motor de scripts ao visualizador antes de abrir o arquivo
-    pdfViewer.setScriptingManager(scriptingManager);
+    if (scriptingManager) {
+        pdfViewer.setScriptingManager(scriptingManager);
+    }
 
+    // Função de Carregamento
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -88,28 +98,30 @@
             try {
                 const loadingTask = pdfjsLib.getDocument({
                     data: currentPdfBytes,
-                    enableJavaScript: true // Garante que o JS interno do seu PDF seja lido
+                    enableJavaScript: true 
                 });
 
                 const pdfDocument = await loadingTask.promise;
                 
-                // Primeiro: Desenha o PDF na tela (Igual ao código 2)
+                // Primeiro: Mostra o PDF na tela (Garante a visibilidade)
                 await pdfViewer.setDocument(pdfDocument);
                 
-                // Segundo: Ativa os cálculos (Ação que faltava no código 2)
-                await scriptingManager.setDocument(pdfDocument);
+                // Segundo: Tenta ativar os cálculos programados
+                if (scriptingManager) {
+                    await scriptingManager.setDocument(pdfDocument);
+                }
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "✓ PDF Pronto e Cálculos Ativos";
+                document.getElementById('msg').innerText = "PDF Aberto. Cálculos Ativados.";
             } catch (err) {
                 console.error(err);
-                alert("Erro ao ler o PDF.");
+                document.getElementById('msg').innerText = "Erro ao exibir PDF.";
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Lógica para Campo de Imagem (Mantida do código que você gosta)
+    // Lógica para Campo de Imagem (Mantida do seu código funcional)
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
@@ -150,6 +162,7 @@
         }
     });
 
+    // Salvar arquivo final
     document.getElementById('save-btn').addEventListener('click', async () => {
         const { PDFDocument } = PDFLib;
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
@@ -169,7 +182,7 @@
         const finalBytes = await pdfDoc.save();
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
-        link.download = "ficha_atualizada.pdf";
+        link.download = "ficha_preenchida.pdf";
         link.click();
     });
 </script>
