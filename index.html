@@ -20,7 +20,7 @@
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abriir PDF</button>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
     <span id="msg">Aguardando arquivo...</span>
 </div>
@@ -47,8 +47,16 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // 1. CRIAR O GERENCIADOR DE SCRIPTS (Sem usar links externos de sandbox que quebram o código)
-    const scriptingManager = new pdfjsViewer.PDFScriptingManager({ eventBus });
+    // --- ADIÇÃO SEGURA: Scripting Manager com Try/Catch ---
+    let scriptingManager = null;
+    try {
+        scriptingManager = new pdfjsViewer.PDFScriptingManager({
+            eventBus: eventBus,
+            sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
+        });
+    } catch (e) {
+        console.warn("Aviso: O motor de cálculos não pôde ser pré-carregado.");
+    }
 
     const pdfViewer = new pdfjsViewer.PDFViewer({
         container: document.getElementById('viewerContainer'),
@@ -57,8 +65,10 @@
         enableScripting: true 
     });
 
-    // 2. CONECTAR O GERENCIADOR AO VISUALIZADOR
-    pdfViewer.setScriptingManager(scriptingManager);
+    // Conecta o motor ao visualizador se ele existir
+    if (scriptingManager) {
+        pdfViewer.setScriptingManager(scriptingManager);
+    }
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -75,22 +85,31 @@
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
                 
-                // 3. ATIVAR A LÓGICA NO DOCUMENTO CARREGADO
-                scriptingManager.setDocument(pdfDocument);
+                // Prioridade 1: Mostrar o PDF na tela
+                await pdfViewer.setDocument(pdfDocument);
+                
+                // Prioridade 2: Tentar ativar sua lógica de cálculos (GitHub)
+                if (scriptingManager) {
+                    try {
+                        await scriptingManager.setDocument(pdfDocument);
+                        document.getElementById('msg').innerText = "✓ PDF e Cálculos Ativados!";
+                    } catch (jsError) {
+                        console.error("Erro na lógica do PDF:", jsError);
+                        document.getElementById('msg').innerText = "PDF Aberto (Erro na lógica de cálculo).";
+                    }
+                }
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado. Use TAB para calcular.";
             } catch (err) {
-                console.error(err);
-                alert("Erro ao ler o PDF.");
+                console.error("Erro ao carregar PDF:", err);
+                alert("Erro ao abrir o arquivo.");
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // --- Lógica de Imagem e Salvamento permanecem IDÊNTICAS ao seu código original ---
+    // --- Lógica de Imagem (Mantida igual ao código que você enviou) ---
     document.getElementById('viewerContainer').addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
