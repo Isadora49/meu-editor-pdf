@@ -20,7 +20,7 @@
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
-    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abriir PDF</button>
+    <button class="btn" onclick="document.getElementById('file-input').click()">📂 Abrir PDF</button>
     <button class="btn" id="save-btn" style="display:none; background: #81c995;">💾 Salvar PDF</button>
     <span id="msg">Aguardando arquivo...</span>
 </div>
@@ -47,11 +47,11 @@
 
     const eventBus = new pdfjsViewer.EventBus();
 
-    // --- ACRÉSCIMO PARA LER A LÓGICA DOS CAMPOS ---
-    // Criamos o gerenciador de scripts e apontamos para o arquivo "sandbox" da mesma versão
+    // 1. GERENCIADOR DE SCRIPTS (Cérebro dos cálculos)
+    // Usamos o sandbox oficial para ler a sua lógica GitHub
     const scriptingManager = new pdfjsViewer.PDFScriptingManager({
-        eventBus,
-        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js',
+        eventBus: eventBus,
+        sandboxBundleSrc: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.sandbox.min.js'
     });
 
     const pdfViewer = new pdfjsViewer.PDFViewer({
@@ -61,9 +61,8 @@
         enableScripting: true 
     });
 
-    // Conectamos o gerenciador de scripts ao visualizador
+    // Conectamos o gerenciador ao visualizador
     pdfViewer.setScriptingManager(scriptingManager);
-    // ----------------------------------------------
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -80,13 +79,16 @@
                 });
 
                 const pdfDocument = await loadingTask.promise;
-                pdfViewer.setDocument(pdfDocument);
                 
-                // AVISA o motor de scripts sobre o novo documento carregado
-                scriptingManager.setDocument(pdfDocument);
+                // Primeiro: Desenhar o PDF (para garantir que ele apareça)
+                await pdfViewer.setDocument(pdfDocument);
+                
+                // Segundo: Ativar a lógica de cálculos (scriptingManager)
+                // Fazemos isso DEPOIS do setDocument para evitar que o PDF suma
+                await scriptingManager.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado com Lógica Ativa.";
+                document.getElementById('msg').innerText = "PDF Aberto. Cálculos Ativos (use TAB para atualizar).";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
