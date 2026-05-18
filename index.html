@@ -54,77 +54,81 @@
         enableScripting: true 
     });
 
+    // --- MOTOR DE CÁLCULO DIRETO INTEGRADO (NÃO UTILIZA SCRIPTINGMANAGER) ---
     eventBus.on("pagerendered", async function (e) {
         const pageElement = e.source.div;
-        const page = await pdfViewer.pdfDocument.getPage(e.pageNumber);
-        const annotations = await page.getAnnotations();
         
-        pageElement.addEventListener("change", () => {
-            if (pdfViewer.pdfDocument) {
-                
-                // Emulador aprimorado para aceitar Textos, Números e Caixas de Seleção
-                const acroContext = {
-                    getField: function(name) {
-                        const el = document.querySelector(`[name="${name}"]`) || document.querySelector(`[aria-label="${name}"]`);
-                        return {
-                            get value() { 
-                                if (!el) return 0;
-                                
-                                // Se for checkbox ou radio button
-                                if (el.type === 'checkbox' || el.type === 'radio') {
-                                    return el.checked ? (el.value || "Yes") : "Off";
-                                }
-                                
-                                // Captura o valor digitado ou selecionado
-                                const val = el.value;
-                                
-                                // Se estiver vazio, trata como zero para cálculos
-                                if (val.trim() === "") return 0;
-                                
-                                // Tenta converter para número. Se não for possível (ex: "paladino"), devolve o texto original.
-                                const num = Number(val);
-                                return isNaN(num) ? val : num;
-                            },
-                            set value(val) { 
-                                if(el) el.value = val; 
-                            }
-                        };
-                    }
-                };
+        // Mapeamento interno de funções auxiliares idênticas ao seu scriptMotor do PDF
+        function getDadoFormula(nivel) {
+            nivel = Number(nivel) || 0;
+            if (nivel >= 51) return "1d100"; if (nivel >= 36) return "1d50";
+            if (nivel >= 26) return "1d20"; if (nivel >= 21) return "1d12";
+            if (nivel >= 16) return "1d10"; if (nivel >= 11) return "1d8";
+            if (nivel >= 6) return "1d6"; return "1d4";
+        }
 
-                annotations.forEach(anno => {
-                    let calcScript = null;
-                    if (anno.additionalActions && anno.additionalActions.C) {
-                        calcScript = anno.additionalActions.C;
-                    }
+        function getDFormula(nivel) {
+            nivel = Number(nivel) || 0;
+            return (nivel >= 51)?100:(nivel >= 36)?50:(nivel >= 26)?20:(nivel >= 21)?12:(nivel >= 16)?10:(nivel >= 11)?8:(nivel >= 6)?6:4;
+        }
 
-                    if (calcScript) {
-                        const targetName = anno.fieldName;
-                        const targetEl = document.querySelector(`[name="${targetName}"]`) || document.querySelector(`[aria-label="${targetName}"]`);
-                        
-                        const acroEvent = {
-                            get value() { 
-                                if (!targetEl) return 0;
-                                const val = targetEl.value;
-                                const num = Number(val);
-                                return isNaN(num) ? val : num;
-                            },
-                            set value(val) { 
-                                if(targetEl) targetEl.value = val; 
-                            }
-                        };
+        const basesClasses = {
+            "Tank": [8,2,2], "Hibrido": [4,2,4], "Assassino": [2,2,8],
+            "Destruidor": [2,4,2], "Arcano": [2,4,2], "Mentalista": [2,4,2],
+            "Vitalista": [2,6,2], "Invocador": [2,6,2], "Elementalista": [2,5,2]
+        };
 
-                        try {
-                            const func = new Function("event", calcScript);
-                            func.call(acroContext, acroEvent);
-                        } catch (error) {
-                            console.log("Erro na lógica do campo: ", targetName, error);
-                        }
-                    }
-                });
+        // Função interna para buscar e atualizar os inputs renderizados na tela de forma segura
+        function obterValorCampo(nome) {
+            const el = document.querySelector(`[name="${nome}"]`) || document.querySelector(`[aria-label="${nome}"]`);
+            return el ? el.value : "";
+        }
+
+        function definirValorCampo(nome, valor, bloquear = false) {
+            const el = document.querySelector(`[name="${nome}"]`) || document.querySelector(`[aria-label="${nome}"]`);
+            if (el) {
+                el.value = valor;
+                if (bloquear) {
+                    el.readOnly = true;
+                    el.style.backgroundColor = "rgba(0, 0, 0, 0.05)"; // Identificação visual de campo automático
+                }
             }
-        });
+        }
+
+        // Executador da lógica matemática extraída do seu script original
+        function executarLogicaFicha() {
+            const escolha = obterValorCampo("c1");
+            const b = basesClasses[escolha] || [0,0,0];
+            const valBase1 = b[0], valBase2 = b[1], valBase3 = b[2];
+
+            // Cálculo dos Blocos Principais (C2, C3, res, c8)
+            const n1 = Number(obterValorCampo("c2")) || 0;
+            definirValorCampo("c3", getDadoFormula(n1), true);
+            definirValorCampo("res", (valBase1 * n1) + getDFormula(n1), true);
+            definirValorCampo("c8", (valBase3 * n1) + getDFormula(n1), true);
+
+            // Cálculo do Segundo Bloco (C5, C6, res2)
+            const n2 = Number(obterValorCampo("c5")) || 0;
+            definirValorCampo("c6", getDadoFormula(n2), true);
+            definirValorCampo("res2", (valBase2 * n2) + getDFormula(n2), true);
+
+            // Loop automatizado para os níveis subsequentes (C9 até C35)
+            for (let i = 9; i <= 35; i += 2) {
+                const nivelVal = obterValorCampo("c" + i);
+                if (nivelVal !== "") {
+                    definirValorCampo("c" + (i + 1), getDadoFormula(nivelVal), true);
+                }
+            }
+        }
+
+        // Monitora as alterações do usuário em tempo real
+        pageElement.addEventListener("input", executarLogicaFicha);
+        pageElement.addEventListener("change", executarLogicaFicha);
+        
+        // Executa uma primeira vez ao terminar de renderizar para garantir dados corretos de início
+        setTimeout(executarLogicaFicha, 500);
     });
+    // ------------------------------------------------------------------------
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -144,7 +148,7 @@
                 pdfViewer.setDocument(pdfDocument);
                 
                 document.getElementById('save-btn').style.display = 'inline-block';
-                document.getElementById('msg').innerText = "PDF Carregado. Preencha e aperte TAB para calcular.";
+                document.getElementById('msg').innerText = "PDF Carregado. Preencha e os cálculos serão feitos automaticamente.";
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler o PDF.");
