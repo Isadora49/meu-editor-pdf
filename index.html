@@ -54,34 +54,45 @@
         enableScripting: true 
     });
 
-    // --- O QUE FOI ACRESCENTADO E MODIFICADO ---
     eventBus.on("pagerendered", async function (e) {
         const pageElement = e.source.div;
-        
-        // 1. Acessa as informações ocultas da página atual do PDF
         const page = await pdfViewer.pdfDocument.getPage(e.pageNumber);
-        
-        // 2. Extrai as anotações (onde o PDF guarda os scripts de cálculo)
         const annotations = await page.getAnnotations();
         
         pageElement.addEventListener("change", () => {
             if (pdfViewer.pdfDocument) {
                 
-                // 3. Cria um emulador do Adobe (fake AcroJS context)
-                // Isso permite que comandos como 'this.getField("nome")' funcionem sem o scriptingManager
+                // Emulador aprimorado para aceitar Textos, Números e Caixas de Seleção
                 const acroContext = {
                     getField: function(name) {
                         const el = document.querySelector(`[name="${name}"]`) || document.querySelector(`[aria-label="${name}"]`);
                         return {
-                            get value() { return el ? (Number(el.value) || 0) : 0; },
-                            set value(val) { if(el) el.value = val; }
+                            get value() { 
+                                if (!el) return 0;
+                                
+                                // Se for checkbox ou radio button
+                                if (el.type === 'checkbox' || el.type === 'radio') {
+                                    return el.checked ? (el.value || "Yes") : "Off";
+                                }
+                                
+                                // Captura o valor digitado ou selecionado
+                                const val = el.value;
+                                
+                                // Se estiver vazio, trata como zero para cálculos
+                                if (val.trim() === "") return 0;
+                                
+                                // Tenta converter para número. Se não for possível (ex: "paladino"), devolve o texto original.
+                                const num = Number(val);
+                                return isNaN(num) ? val : num;
+                            },
+                            set value(val) { 
+                                if(el) el.value = val; 
+                            }
                         };
                     }
                 };
 
-                // 4. Varre todos os campos do PDF buscando programações de cálculo
                 annotations.forEach(anno => {
-                    // Nos PDFs, a ação 'C' (Calculate) guarda a lógica de cálculo
                     let calcScript = null;
                     if (anno.additionalActions && anno.additionalActions.C) {
                         calcScript = anno.additionalActions.C;
@@ -91,14 +102,19 @@
                         const targetName = anno.fieldName;
                         const targetEl = document.querySelector(`[name="${targetName}"]`) || document.querySelector(`[aria-label="${targetName}"]`);
                         
-                        // 5. Cria o objeto 'event', usado pela programação do PDF para exibir o resultado
                         const acroEvent = {
-                            get value() { return targetEl ? (Number(targetEl.value) || 0) : 0; },
-                            set value(val) { if(targetEl) targetEl.value = val; }
+                            get value() { 
+                                if (!targetEl) return 0;
+                                const val = targetEl.value;
+                                const num = Number(val);
+                                return isNaN(num) ? val : num;
+                            },
+                            set value(val) { 
+                                if(targetEl) targetEl.value = val; 
+                            }
                         };
 
                         try {
-                            // 6. Roda a lógica extraída do PDF de forma segura direto no navegador
                             const func = new Function("event", calcScript);
                             func.call(acroContext, acroEvent);
                         } catch (error) {
@@ -106,11 +122,9 @@
                         }
                     }
                 });
-                console.log("Lógicas de cálculo verificadas e executadas!");
             }
         });
     });
-    // -------------------------------------------
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -179,7 +193,6 @@
         const pdfDoc = await PDFDocument.load(currentPdfBytes);
         const form = pdfDoc.getForm();
 
-        // CAPTURA AUTOMÁTICA DOS CÁLCULOS:
         const fields = form.getFields();
         fields.forEach(field => {
             const name = field.getName();
