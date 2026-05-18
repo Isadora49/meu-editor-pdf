@@ -54,23 +54,63 @@
         enableScripting: true 
     });
 
-    // --- O QUE FOI ACRESCENTADO ---
-    // Esta função monitora quando você termina de digitar em um campo
-    // Ela força o PDF.js a reprocessar as regras de cálculos internos
-    eventBus.on("pagerendered", function (e) {
+    // --- O QUE FOI ACRESCENTADO E MODIFICADO ---
+    eventBus.on("pagerendered", async function (e) {
         const pageElement = e.source.div;
-        pageElement.addEventListener("change", async () => {
-            // Avisa o visualizador que houve mudança para disparar a lógica do PDF
+        
+        // 1. Acessa as informações ocultas da página atual do PDF
+        const page = await pdfViewer.pdfDocument.getPage(e.pageNumber);
+        
+        // 2. Extrai as anotações (onde o PDF guarda os scripts de cálculo)
+        const annotations = await page.getAnnotations();
+        
+        pageElement.addEventListener("change", () => {
             if (pdfViewer.pdfDocument) {
-                const annotationLayer = e.source.annotationLayer;
-                if (annotationLayer) {
-                    // Atualiza os cálculos internos do PDF sem sumir com a imagem
-                    console.log("Processando lógica de cálculo...");
-                }
+                
+                // 3. Cria um emulador do Adobe (fake AcroJS context)
+                // Isso permite que comandos como 'this.getField("nome")' funcionem sem o scriptingManager
+                const acroContext = {
+                    getField: function(name) {
+                        const el = document.querySelector(`[name="${name}"]`) || document.querySelector(`[aria-label="${name}"]`);
+                        return {
+                            get value() { return el ? (Number(el.value) || 0) : 0; },
+                            set value(val) { if(el) el.value = val; }
+                        };
+                    }
+                };
+
+                // 4. Varre todos os campos do PDF buscando programações de cálculo
+                annotations.forEach(anno => {
+                    // Nos PDFs, a ação 'C' (Calculate) guarda a lógica de cálculo
+                    let calcScript = null;
+                    if (anno.additionalActions && anno.additionalActions.C) {
+                        calcScript = anno.additionalActions.C;
+                    }
+
+                    if (calcScript) {
+                        const targetName = anno.fieldName;
+                        const targetEl = document.querySelector(`[name="${targetName}"]`) || document.querySelector(`[aria-label="${targetName}"]`);
+                        
+                        // 5. Cria o objeto 'event', usado pela programação do PDF para exibir o resultado
+                        const acroEvent = {
+                            get value() { return targetEl ? (Number(targetEl.value) || 0) : 0; },
+                            set value(val) { if(targetEl) targetEl.value = val; }
+                        };
+
+                        try {
+                            // 6. Roda a lógica extraída do PDF de forma segura direto no navegador
+                            const func = new Function("event", calcScript);
+                            func.call(acroContext, acroEvent);
+                        } catch (error) {
+                            console.log("Erro na lógica do campo: ", targetName, error);
+                        }
+                    }
+                });
+                console.log("Lógicas de cálculo verificadas e executadas!");
             }
         });
     });
-    // ------------------------------
+    // -------------------------------------------
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -140,7 +180,6 @@
         const form = pdfDoc.getForm();
 
         // CAPTURA AUTOMÁTICA DOS CÁLCULOS:
-        // Antes de salvar, pegamos os valores que o PDF calculou na tela
         const fields = form.getFields();
         fields.forEach(field => {
             const name = field.getName();
