@@ -90,4 +90,184 @@
 
         function definirValorCampo(nome, valor, bloquear = false) {
             const el = document.querySelector(`[name="${nome}"]`) || 
-                       document.querySelector(`
+                       document.querySelector(`[aria-label="${nome}"]`) || 
+                       document.getElementById(nome) ||
+                       Array.from(document.querySelectorAll('input, select')).find(i => i.name?.endsWith(nome) || i.id?.endsWith(nome));
+            if (el) {
+                el.value = valor;
+                if (bloquear) {
+                    el.readOnly = true;
+                    el.style.backgroundColor = "rgba(0, 0, 0, 0.04)"; 
+                }
+            }
+        }
+
+        function executarLogicaFicha() {
+            const escolha = obterValorCampo("c1");
+            const classeLimpa = escolha ? escolha.trim() : "";
+            
+            const b = basesClasses[classeLimpa] || [0,0,0];
+            const valBase1 = b[0], valBase2 = b[1], valBase3 = b[2];
+
+            const n1 = Number(obterValorCampo("c2")) || 0;
+            definirValorCampo("c3", getDadoFormula(n1), true);
+            definirValorCampo("res", (valBase1 * n1) + getDFormula(n1), true);
+            definirValorCampo("c8", (valBase3 * n1) + getDFormula(n1), true);
+
+            const n2 = Number(obterValorCampo("c5")) || 0;
+            definirValorCampo("c6", getDadoFormula(n2), true);
+            definirValorCampo("res2", (valBase2 * n2) + getDFormula(n2), true);
+
+            for (let i = 9; i <= 35; i += 2) {
+                const nivelVal = obterValorCampo("c" + i);
+                if (nivelVal !== "") {
+                    definirValorCampo("c" + (i + 1), getDadoFormula(nivelVal), true);
+                }
+            }
+        }
+
+        pageElement.addEventListener("input", executarLogicaFicha);
+        pageElement.addEventListener("change", executarLogicaFicha);
+        
+        setTimeout(executarLogicaFicha, 600);
+    });
+
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function() {
+            currentPdfBytes = new Uint8Array(this.result);
+            
+            try {
+                const loadingTask = pdfjsLib.getDocument({
+                    data: currentPdfBytes,
+                    enableJavaScript: true 
+                });
+
+                const pdfDocument = await loadingTask.promise;
+                pdfViewer.setDocument(pdfDocument);
+                
+                document.getElementById('save-btn').style.display = 'inline-block';
+                document.getElementById('msg').innerText = "PDF Carregado. Preencha e os cálculos serão feitos automaticamente.";
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao ler o PDF.");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById('viewerContainer').addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.classList.contains('buttonWidgetAnnotation') || target.closest('.buttonWidgetAnnotation')) {
+            lastClickedField = target.closest('.buttonWidgetAnnotation') || target;
+            document.getElementById('img-selector').click();
+        }
+    });
+
+    document.getElementById('img-selector').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file || !lastClickedField) return;
+        const imgUrl = URL.createObjectURL(file);
+        const imgBuffer = await file.arrayBuffer();
+        const rect = lastClickedField.getBoundingClientRect();
+        const pageDiv = lastClickedField.closest('.page');
+        if (pageDiv) {
+            const visualImg = document.createElement('img');
+            visualImg.src = imgUrl;
+            visualImg.className = 'instant-img';
+            visualImg.style.width = rect.width + 'px';
+            visualImg.style.height = rect.height + 'px';
+            const pageRect = pageDiv.getBoundingClientRect();
+            visualImg.style.left = (rect.left - pageRect.left) + 'px';
+            visualImg.style.top = (rect.top - pageRect.top) + 'px';
+            pageDiv.appendChild(visualImg);
+            imagesToProcess.push({
+                buffer: imgBuffer, type: file.type,
+                widthPct: rect.width / pageDiv.clientWidth,
+                heightPct: rect.height / pageDiv.clientHeight,
+                leftPct: (rect.left - pageRect.left) / pageDiv.clientWidth,
+                topPct: (rect.top - pageRect.top) / pageDiv.clientHeight
+            });
+        }
+    });
+
+    // --- FUNÇÃO AUXILIAR ANTI-TRAVAMENTO DE EMOJIS ---
+    // Filtra strings mantendo apenas caracteres compatíveis com fontes padrão de PDF (WinAnsi/Latin1) + quebras de linha
+    function limparEmojisEUnicode(texto) {
+        if (!texto) return "";
+        return texto.split('').filter(char => {
+            const code = char.charCodeAt(0);
+            return (code >= 32 && code <= 255) || code === 10 || code === 13;
+        }).join('');
+    }
+
+    // --- MÓDULO DE DOWNLOAD BLINDADO ---
+    document.getElementById('save-btn').addEventListener('click', async () => {
+        try {
+            const PDFDocument = window.PDFLib.PDFDocument;
+            const pdfDoc = await PDFDocument.load(currentPdfBytes);
+            const form = pdfDoc.getForm();
+            const fields = form.getFields();
+
+            fields.forEach(field => {
+                const name = field.getName();
+                
+                const element = document.querySelector(`[name="${name}"]`) || 
+                                document.querySelector(`[aria-label="${name}"]`) || 
+                                document.getElementById(name) ||
+                                Array.from(document.querySelectorAll('input, select')).find(i => i.name?.endsWith(name) || i.id?.endsWith(name));
+                
+                if (element) {
+                    try { 
+                        if (element.tagName === 'SELECT') {
+                            const valorSelect = element.options[element.selectedIndex] ? element.options[element.selectedIndex].text : "";
+                            const valorLimpo = limparEmojisEUnicode(valorSelect);
+                            if(valorLimpo.trim()) field.select(valorLimpo.trim());
+                        } else {
+                            // Aplica a limpeza de caracteres complexos/emojis para não quebrar a compilação do arquivo
+                            const textoLimpo = limparEmojisEUnicode(element.value);
+                            field.setText(textoLimpo || ""); 
+                        }
+                    } catch(e) {
+                        console.warn(`Aviso no campo estrutural: ${name}`, e);
+                    }
+                }
+            });
+
+            const page = pdfDoc.getPages()[0];
+            const { width, height } = page.getSize();
+            for (const imgData of imagesToProcess) {
+                try {
+                    const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(imgData.buffer) : await pdfDoc.embedJpg(imgData.buffer);
+                    page.drawImage(img, {
+                        x: imgData.leftPct * width,
+                        y: height - (imgData.topPct * height) - (imgData.heightPct * height),
+                        width: imgData.widthPct * width,
+                        height: imgData.heightPct * height
+                    });
+                } catch (imgErr) {
+                    console.error("Erro ao embutir imagem:", imgErr);
+                }
+            }
+
+            const finalBytes = await pdfDoc.save();
+            const blob = new Blob([finalBytes], {type: 'application/pdf'});
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "ficha_calculada_oficial.pdf";
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+        } catch (error) {
+            console.error("Erro Crítico no Engine de Compilação do PDF:", error);
+            alert("Erro técnico ao gerar o arquivo devido a caracteres especiais. Verifique o console.");
+        }
+    });
+</script>
+</body>
+</html>
