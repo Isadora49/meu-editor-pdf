@@ -194,23 +194,20 @@
         }
     });
 
-    // --- FUNÇÃO AUXILIAR ANTI-TRAVAMENTO DE EMOJIS ---
-    // Filtra strings mantendo apenas caracteres compatíveis com fontes padrão de PDF (WinAnsi/Latin1) + quebras de linha
-    function limparEmojisEUnicode(texto) {
-        if (!texto) return "";
-        return texto.split('').filter(char => {
-            const code = char.charCodeAt(0);
-            return (code >= 32 && code <= 255) || code === 10 || code === 13;
-        }).join('');
-    }
-
-    // --- MÓDULO DE DOWNLOAD BLINDADO ---
+    // --- MÓDULO DE DOWNLOAD COM SISTEMA ANTI-EMOJI (REMOCÃO UNICODE INCOMPATÍVEL) ---
     document.getElementById('save-btn').addEventListener('click', async () => {
         try {
             const PDFDocument = window.PDFLib.PDFDocument;
             const pdfDoc = await PDFDocument.load(currentPdfBytes);
             const form = pdfDoc.getForm();
             const fields = form.getFields();
+
+            // Função Regex para limpar emojis e caracteres não-padrão que travam o PDF-Lib
+            function limparTextoParaPDF(texto) {
+                if (!texto) return "";
+                // Remove surrogate pairs (emojis complexos) e símbolos especiais preservando caracteres acentuados padrão Pt-Br
+                return texto.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200d|\u2705|\u274c|\u24c2|[\u25b6-\u27bf]/g, "");
+            }
 
             fields.forEach(field => {
                 const name = field.getName();
@@ -224,12 +221,12 @@
                     try { 
                         if (element.tagName === 'SELECT') {
                             const valorSelect = element.options[element.selectedIndex] ? element.options[element.selectedIndex].text : "";
-                            const valorLimpo = limparEmojisEUnicode(valorSelect);
+                            const valorLimpo = limparTextoParaPDF(valorSelect);
                             if(valorLimpo.trim()) field.select(valorLimpo.trim());
                         } else {
-                            // Aplica a limpeza de caracteres complexos/emojis para não quebrar a compilação do arquivo
-                            const textoLimpo = limparEmojisEUnicode(element.value);
-                            field.setText(textoLimpo || ""); 
+                            // Limpa o texto digitado removendo emojis antes de injetar no PDF plano
+                            const valorLimpo = limparTextoParaPDF(element.value);
+                            field.setText(valorLimpo || ""); 
                         }
                     } catch(e) {
                         console.warn(`Aviso no campo estrutural: ${name}`, e);
@@ -265,7 +262,7 @@
             
         } catch (error) {
             console.error("Erro Crítico no Engine de Compilação do PDF:", error);
-            alert("Erro técnico ao gerar o arquivo devido a caracteres especiais. Verifique o console.");
+            alert("Ocorreu um erro ao processar o salvamento. Veja o Console (F12) para detalhes.");
         }
     });
 </script>
