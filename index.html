@@ -9,7 +9,8 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #202124; overflow: hidden; display: flex; flex-direction: column; }
         .toolbar { height: 56px; background: #323639; display: flex; align-items: center; padding: 0 20px; color: white; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
-        .btn { background: #8ab4f8; color: #202124; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 12px; }
+        .btn { background: #8ab4f8; color: #202124; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 12px; transition: 0.3s; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         #viewerContainer { position: absolute; top: 56px; bottom: 0; left: 0; right: 0; overflow: auto; background: #525659; }
         .pdfViewer .page { margin: 15px auto; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); position: relative; }
         .instant-img { position: absolute; z-index: 99; pointer-events: none; object-fit: cover; }
@@ -58,7 +59,6 @@
     eventBus.on("pagerendered", async function (e) {
         const pageElement = e.source.div;
         
-        // Mapeamento interno de funções auxiliares idênticas ao seu scriptMotor do PDF
         function getDadoFormula(nivel) {
             nivel = Number(nivel) || 0;
             if (nivel >= 51) return "1d100"; if (nivel >= 36) return "1d50";
@@ -78,7 +78,6 @@
             "Vitalista": [2,6,2], "Invocador": [2,6,2], "Elementalista": [2,5,2]
         };
 
-        // Função interna para buscar e atualizar os inputs renderizados na tela de forma segura
         function obterValorCampo(nome) {
             const el = document.querySelector(`[name="${nome}"]`) || document.querySelector(`[aria-label="${nome}"]`);
             return el ? el.value : "";
@@ -90,29 +89,25 @@
                 el.value = valor;
                 if (bloquear) {
                     el.readOnly = true;
-                    el.style.backgroundColor = "rgba(0, 0, 0, 0.05)"; // Identificação visual de campo automático
+                    el.style.backgroundColor = "rgba(0, 0, 0, 0.05)"; 
                 }
             }
         }
 
-        // Executador da lógica matemática extraída do seu script original
         function executarLogicaFicha() {
             const escolha = obterValorCampo("c1");
             const b = basesClasses[escolha] || [0,0,0];
             const valBase1 = b[0], valBase2 = b[1], valBase3 = b[2];
 
-            // Cálculo dos Blocos Principais (C2, C3, res, c8)
             const n1 = Number(obterValorCampo("c2")) || 0;
             definirValorCampo("c3", getDadoFormula(n1), true);
             definirValorCampo("res", (valBase1 * n1) + getDFormula(n1), true);
             definirValorCampo("c8", (valBase3 * n1) + getDFormula(n1), true);
 
-            // Cálculo do Segundo Bloco (C5, C6, res2)
             const n2 = Number(obterValorCampo("c5")) || 0;
             definirValorCampo("c6", getDadoFormula(n2), true);
             definirValorCampo("res2", (valBase2 * n2) + getDFormula(n2), true);
 
-            // Loop automatizado para os níveis subsequentes (C9 até C35)
             for (let i = 9; i <= 35; i += 2) {
                 const nivelVal = obterValorCampo("c" + i);
                 if (nivelVal !== "") {
@@ -121,14 +116,11 @@
             }
         }
 
-        // Monitora as alterações do usuário em tempo real
         pageElement.addEventListener("input", executarLogicaFicha);
         pageElement.addEventListener("change", executarLogicaFicha);
         
-        // Executa uma primeira vez ao terminar de renderizar para garantir dados corretos de início
         setTimeout(executarLogicaFicha, 500);
     });
-    // ------------------------------------------------------------------------
 
     document.getElementById('file-input').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -192,36 +184,86 @@
         }
     });
 
+    // --- BOTÃO DE DOWNLOAD RECONSTRUÍDO COM PROTEÇÕES ---
     document.getElementById('save-btn').addEventListener('click', async () => {
-        const { PDFDocument } = PDFLib;
-        const pdfDoc = await PDFDocument.load(currentPdfBytes);
-        const form = pdfDoc.getForm();
+        const btn = document.getElementById('save-btn');
+        const msg = document.getElementById('msg');
+        
+        try {
+            btn.disabled = true;
+            msg.innerText = "Preparando Download...";
+            
+            const { PDFDocument } = PDFLib;
+            const pdfDoc = await PDFDocument.load(currentPdfBytes);
+            const form = pdfDoc.getForm();
 
-        const fields = form.getFields();
-        fields.forEach(field => {
-            const name = field.getName();
-            const element = document.querySelector(`[aria-label="${name}"], [name="${name}"]`);
-            if (element && element.value) {
-                try { field.setText(element.value); } catch(e) {}
-            }
-        });
-
-        const page = pdfDoc.getPages()[0];
-        const { width, height } = page.getSize();
-        for (const imgData of imagesToProcess) {
-            const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(imgData.buffer) : await pdfDoc.embedJpg(imgData.buffer);
-            page.drawImage(img, {
-                x: imgData.leftPct * width,
-                y: height - (imgData.topPct * height) - (imgData.heightPct * height),
-                width: imgData.widthPct * width,
-                height: imgData.heightPct * height
+            const fields = form.getFields();
+            fields.forEach(field => {
+                const name = field.getName();
+                
+                try {
+                    // Previne que nomes de campos com aspas quebrem a pesquisa no navegador
+                    const safeName = name.replace(/"/g, '\\"');
+                    const element = document.querySelector(`[aria-label="${safeName}"], [name="${safeName}"]`);
+                    
+                    if (element && element.value) {
+                        // Desbloqueia campos matemáticos para que a biblioteca possa gravar o total neles
+                        try { field.disableReadOnly(); } catch(e) {}
+                        
+                        // Tentativas em cascata: Texto normal -> Lista Dropdown -> Caixa de Checagem
+                        try { 
+                            field.setText(element.value); 
+                        } catch(e1) {
+                            try { 
+                                field.select(element.value); 
+                            } catch(e2) {
+                                try { 
+                                    if(element.checked) field.check(); else field.uncheck(); 
+                                } catch(e3) {}
+                            }
+                        }
+                    }
+                } catch(fieldError) {
+                    console.warn(`Aviso ao salvar campo ${name}:`, fieldError);
+                }
             });
+
+            const page = pdfDoc.getPages()[0];
+            const { width, height } = page.getSize();
+            for (const imgData of imagesToProcess) {
+                // Cria uma cópia da memória da imagem para evitar falhas se o usuário clicar em "Salvar" mais de uma vez
+                const bufferCopy = imgData.buffer.slice(0);
+                const img = (imgData.type === 'image/png') ? await pdfDoc.embedPng(bufferCopy) : await pdfDoc.embedJpg(bufferCopy);
+                page.drawImage(img, {
+                    x: imgData.leftPct * width,
+                    y: height - (imgData.topPct * height) - (imgData.heightPct * height),
+                    width: imgData.widthPct * width,
+                    height: imgData.heightPct * height
+                });
+            }
+
+            const finalBytes = await pdfDoc.save();
+            const blob = new Blob([finalBytes], { type: 'application/pdf' });
+            
+            // Método seguro e compatível com todos os navegadores
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "ficha_preenchida_atualizada.pdf";
+            
+            // Algumas mecânicas do navegador exigem que o link exista de verdade na página antes do clique
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            msg.innerText = "PDF Baixado com sucesso!";
+            
+        } catch(error) {
+            console.error(error);
+            msg.innerText = "Ocorreu um erro no download.";
+            alert("Erro técnico ao salvar. Verifique se as permissões do navegador estão ok.");
+        } finally {
+            btn.disabled = false;
         }
-        const finalBytes = await pdfDoc.save();
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(new Blob([finalBytes], {type: 'application/pdf'}));
-        link.download = "ficha_preenchida.pdf";
-        link.click();
     });
 </script>
 </body>
