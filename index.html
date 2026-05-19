@@ -65,7 +65,6 @@
             if (nivel >= 6) return "1d6"; return "1d4";
         }
 
-        // Função corrigida para retornar o número base de cálculo puro
         function getDFormula(nivel) {
             nivel = Number(nivel) || 0;
             return (nivel >= 51)?100:(nivel >= 36)?50:(nivel >= 26)?20:(nivel >= 21)?12:(nivel >= 16)?10:(nivel >= 11)?8:(nivel >= 6)?6:4;
@@ -78,7 +77,6 @@
         };
 
         function obterValorCampo(nome) {
-            // Busca expandida para evitar perda de foco do elemento
             const el = document.querySelector(`[name="${nome}"]`) || 
                        document.querySelector(`[aria-label="${nome}"]`) || 
                        document.getElementById(nome) ||
@@ -196,7 +194,14 @@
         }
     });
 
-    // --- MÓDULO DE DOWNLOAD COM SISTEMA ANTI-TRAVAMENTO (FALLBACK INTERNO) ---
+    // --- FUNÇÃO AUXILIAR DE LIMPEZA DE EMOJIS ---
+    function limparEmojisESimbolos(texto) {
+        if (!texto) return "";
+        // Remove blocos de Emojis, Símbolos de Transporte, Pictográficos e Variantes Estendidas (incluindo o 💠)
+        return texto.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '');
+    }
+
+    // --- MÓDULO DE DOWNLOAD COM HIGIENIZAÇÃO DE CARACTERES ---
     document.getElementById('save-btn').addEventListener('click', async () => {
         try {
             const PDFDocument = window.PDFLib.PDFDocument;
@@ -207,7 +212,6 @@
             fields.forEach(field => {
                 const name = field.getName();
                 
-                // Seletor agressivo para capturar o elemento mesmo se mudar de ID ou escopo de renderização
                 const element = document.querySelector(`[name="${name}"]`) || 
                                 document.querySelector(`[aria-label="${name}"]`) || 
                                 document.getElementById(name) ||
@@ -217,9 +221,12 @@
                     try { 
                         if (element.tagName === 'SELECT') {
                             const valorSelect = element.options[element.selectedIndex] ? element.options[element.selectedIndex].text : "";
-                            if(valorSelect.trim()) field.select(valorSelect.trim());
+                            const valorLimpoSelect = limparEmojisESimbolos(valorSelect.trim());
+                            if(valorLimpoSelect) field.select(valorLimpoSelect);
                         } else {
-                            field.setText(element.value || ""); 
+                            // Higieniza o texto limpando o emoji antes do "setText" para evitar o travamento interno do PDF
+                            const valorTratado = limparEmojisESimbolos(element.value || "");
+                            field.setText(valorTratado); 
                         }
                     } catch(e) {
                         console.warn(`Aviso no campo estrutural: ${name}`, e);
@@ -227,7 +234,6 @@
                 }
             });
 
-            // Processamento de imagens adicionadas dinamicamente
             const page = pdfDoc.getPages()[0];
             const { width, height } = page.getSize();
             for (const imgData of imagesToProcess) {
@@ -250,7 +256,6 @@
             link.href = URL.createObjectURL(blob);
             link.download = "ficha_calculada_oficial.pdf";
             
-            // Força a execução física do clique no documento
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
